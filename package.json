@@ -8,6 +8,9 @@
     "install:api": "npm --prefix apps/api install",
     "install:worker": "npm --prefix workers/executor install",
     "install:all": "npm run install:web && npm run install:api && npm run install:worker",
-    "dev": "start \"EvoFlow Web\" cmd /k \"cd /d C:\\EvoFlow\\apps\\web && npm run dev\" && start \"EvoFlow API\" cmd /k \"cd /d C:\\EvoFlow\\apps\\api && npm run dev\" && start \"EvoFlow Worker\" cmd /k \"cd /d C:\\EvoFlow\\workers\\executor && npm run dev\""
+    "dev": "concurrently -n \"WEB,API,WRK\" -c \"cyan,magenta,yellow\" --kill-others \"npm run dev --prefix apps/web\" \"npm run dev --prefix apps/api\" \"npm run dev --prefix workers/executor\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
