@@ -804,16 +804,30 @@ export default function ChatClient() {
     <main
       style={{
         width: "100%",
-        maxWidth: "none",
-        margin: 0,
-        padding: 8,
-        background: ui.pageBg, backdropFilter: "blur(6px)",
+        maxWidth: "1800px",
+        margin: "0 auto",
+        padding: "12px 16px",
+        background: ui.pageBg,
+        backdropFilter: "blur(6px)",
         borderRadius: 32,
         border: `1px solid ${ui.pageBorder}`,
         color: ui.text,
         boxShadow: isDark ? "0 30px 80px rgba(2, 6, 23, 0.55)" : "0 20px 48px rgba(15, 23, 42, 0.08)",
       }}
     >
+      <div
+        style={{
+          position: "sticky",
+          top: -12, // Offset the main padding
+          zIndex: 100,
+          background: isDark ? "rgba(7,17,31,0.85)" : "rgba(255,255,255,0.85)",
+          backdropFilter: "blur(12px)",
+          margin: "-12px -16px 16px -16px",
+          padding: "16px 20px",
+          borderBottom: `1px solid ${ui.panelBorder}`,
+          boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.2)" : "0 4px 20px rgba(0,0,0,0.05)",
+        }}
+      >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
         <div>
           <h1 style={{ fontSize: 34, lineHeight: 1.0, letterSpacing: -0.9, margin: 0 }}>EvoFlow Chat</h1>
@@ -1002,6 +1016,7 @@ export default function ChatClient() {
           </div>
         </div>
       </div>
+    </div>
 
       {devErrorText ? (
         <div
@@ -1022,9 +1037,9 @@ export default function ChatClient() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "210px minmax(0, 1fr)",
-          gap: 14,
-          minHeight: "84vh",
+          gridTemplateColumns: "260px minmax(0, 1fr)",
+          gap: 16,
+          minHeight: "88vh",
           alignItems: "stretch",
           padding: "4px 12px",
           background: ui.pageBg, backdropFilter: "blur(6px)",
@@ -1413,7 +1428,7 @@ export default function ChatClient() {
                           </div>
                         </div>
                       );
-                    )})}
+                    })}
                   </div>
                 )}
               </div>
