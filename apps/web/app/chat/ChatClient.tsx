@@ -1234,59 +1234,62 @@ export default function ChatClient() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%", marginBottom: 12 }}>
                 <div>
-                  <label style={{ display: "block", marginBottom: 3, fontSize: 10, fontWeight: 700, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.3 }}>Mode</label>
+                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Mode</label>
                   <select
                     value={activeSession.workflowMode}
                     onChange={(e) => updateActiveSessionField("workflowMode", e.target.value as "direct" | "multi-step")}
-                    style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: "transparent", color: ui.text, fontSize: 12 }}
+                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
                   >
-                    <option value="direct">Direct</option>
-                    <option value="multi-step">Multi-step</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="direct">Direct</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="multi-step">Multi-step</option>
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Model selection</label>
+                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Model selection</label>
                   <select
                     value={activeSession.modelSelection}
                     onChange={(e) => updateActiveSessionField("modelSelection", e.target.value as "auto" | "manual")}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
                   >
-                    <option value="auto">Auto</option>
-                    <option value="manual">Manual</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="auto">Auto</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="manual">Manual</option>
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Model</label>
+                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Model</label>
                   <select
                     value={activeSession.model}
                     onChange={(e) => updateActiveSessionField("model", e.target.value)}
                     disabled={activeSession.modelSelection === "auto"}
                     style={{
                       width: "100%",
-                      padding: "9px 10px",
-                      borderRadius: 18,
+                      height: 36,
+                      padding: "0 10px",
+                      borderRadius: 8,
                       border: `1px solid ${ui.controlBorder}`,
-                      background: activeSession.modelSelection === "auto" ? (isDark ? "#172033" : "#f2f4f7") : ui.controlBg,
+                      background: activeSession.modelSelection === "auto" ? (isDark ? "rgba(15,23,42,0.3)" : "#f2f4f7") : (isDark ? "rgba(10,18,34,0.4)" : "transparent"),
                       color: ui.text,
+                      fontSize: 13,
+                      outline: "none",
                     }}
                   >
                     {models.map((model) => (
-                      <option key={model} value={model}>{model}</option>
+                      <option key={model} style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value={model}>{model}</option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label style={{ display: "block", marginBottom: 3, fontSize: 10, fontWeight: 700, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.3 }}>Response mode</label>
+                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Response mode</label>
                   <select
                     value={activeSession.transport}
                     onChange={(e) => updateActiveSessionField("transport", e.target.value as "normal" | "stream")}
-                    style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: "transparent", color: ui.text, fontSize: 12 }}
+                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
                   >
-                    <option value="stream">Streaming</option>
-                    <option value="normal">Normal</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="stream">Streaming</option>
+                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="normal">Normal</option>
                   </select>
                 </div>
               </div>
