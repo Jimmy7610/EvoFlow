@@ -820,11 +820,10 @@ export default function ChatClient() {
         height: "100vh",
         maxWidth: "1800px",
         margin: "0 auto",
-        padding: "6px 12px",
+        padding: "8px 12px",
         display: "flex",
         flexDirection: "column",
         background: ui.pageBg,
-        backdropFilter: "blur(6px)",
         color: ui.text,
         overflow: "hidden",
       }}
@@ -832,38 +831,38 @@ export default function ChatClient() {
       <div
         style={{
           zIndex: 100,
-          background: isDark ? "rgba(7,17,31,0.85)" : "rgba(255,255,255,0.85)",
-          backdropFilter: "blur(12px)",
-          margin: "0 0 8px 0",
-          padding: "10px 16px",
-          borderRadius: 24,
+          background: isDark ? "rgba(10, 20, 35, 0.82)" : "rgba(255, 255, 255, 0.85)",
+          backdropFilter: "blur(18px)",
+          margin: "0 0 10px 0",
+          padding: "8px 16px",
+          borderRadius: 16,
           border: `1px solid ${ui.panelBorder}`,
-          boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.2)" : "0 4px 20px rgba(0,0,0,0.05)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
         }}
       >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-            <h1 style={{ fontSize: 22, lineHeight: 1.0, letterSpacing: -0.5, margin: 0 }}>EvoFlow Chat</h1>
-            <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 700 }}>
-              <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.7 }}>Dashboard</Link>
-              <Link href="/workflows" style={{ color: ui.accent, textDecoration: "none", opacity: 0.7 }}>Workflows</Link>
-              <Link href="/chat" style={{ color: ui.text, textDecoration: "none" }}>Chat</Link>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.0, letterSpacing: -0.4, margin: 0, color: ui.text }}>EvoFlow Chat</h1>
+            <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
+              <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Dashboard</Link>
+              <Link href="/workflows" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Workflows</Link>
+              <Link href="/chat" style={{ color: ui.text, textDecoration: "none", fontWeight: 700 }}>Chat</Link>
             </nav>
           </div>
-          <div style={{ color: ui.subtle, marginTop: 4, fontSize: 11.5, opacity: 0.8 }}>
-            Local Ollama mode · Multi-step & Streaming · V27 Compact
+          <div style={{ color: ui.subtle, marginTop: 4, fontSize: 11, fontWeight: 500, opacity: 0.6 }}>
+            Local Ollama mode · Multi-step & Streaming · Obsidian 2.0
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "4px 8px", borderRadius: 12, background: isDark ? "rgba(7,17,31,0.58)" : "rgba(255,255,255,0.78)", border: `1px solid ${ui.panelBorder}`, backdropFilter: "blur(14px)" }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", padding: "4px", borderRadius: 12, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)", border: `1px solid ${ui.panelBorder}` }}>
           <button
             type="button"
             onClick={() => handleDevControl("start")}
             disabled={isDevActionLoading}
             style={{
-              padding: "8px 12px",
-              borderRadius: 18,
+              padding: "6px 10px",
+              borderRadius: 10,
               border: `1px solid ${ui.controlBorder}`,
               background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
               color: "#ffffff",
@@ -879,8 +878,8 @@ export default function ChatClient() {
             onClick={() => handleDevControl("stop")}
             disabled={isDevActionLoading}
             style={{
-              padding: "8px 12px",
-              borderRadius: 18,
+              padding: "6px 10px",
+              borderRadius: 10,
               border: `1px solid ${ui.controlBorder}`,
               background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d",
               color: "#ffffff",
@@ -895,8 +894,8 @@ export default function ChatClient() {
             type="button"
             onClick={handleExportChats}
             style={{
-              padding: "8px 12px",
-              borderRadius: 18,
+              padding: "6px 10px",
+              borderRadius: 10,
               border: `1px solid ${ui.controlBorder}`,
               background: ui.actionBg,
               color: ui.actionText,
@@ -911,8 +910,8 @@ export default function ChatClient() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             style={{
-              padding: "8px 12px",
-              borderRadius: 18,
+              padding: "6px 10px",
+              borderRadius: 10,
               border: `1px solid ${ui.controlBorder}`,
               background: ui.actionBg,
               color: ui.actionText,
@@ -927,8 +926,8 @@ export default function ChatClient() {
             type="button"
             onClick={() => setAgentViewEnabled((prev) => !prev)}
             style={{
-              padding: "8px 12px",
-              borderRadius: 18,
+              padding: "6px 10px",
+              borderRadius: 10,
               border: `1px solid ${ui.controlBorder}`,
               background: agentViewEnabled ? (isDark ? "#1d4ed8" : "#eff6ff") : ui.actionBg,
               color: agentViewEnabled ? (isDark ? "#dbeafe" : "#1d4ed8") : ui.actionText,
@@ -960,10 +959,10 @@ export default function ChatClient() {
             onClick={handleCreateSession}
             style={{
               padding: "6px 10px",
-              borderRadius: 14,
-              border: "1px solid rgba(96,165,250,0.24)",
-              background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%)",
-                      boxShadow: isDark ? "0 12px 28px rgba(37,99,235,0.42)" : "0 10px 22px rgba(37,99,235,0.20)",
+              borderRadius: 10,
+              border: "1px solid rgba(96,165,250,0.3)",
+              background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
+                      boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
               color: "#fff",
               cursor: "pointer",
               fontWeight: 700,
@@ -1055,24 +1054,24 @@ export default function ChatClient() {
         style={{
           display: "grid",
           gridTemplateColumns: "230px minmax(0, 1fr)",
-          gap: 10,
+          gap: 12,
           flex: 1,
           alignItems: "stretch",
-          padding: "0 4px 8px 4px",
+          padding: "0 4px 10px 4px",
           overflow: "hidden",
         }}
       >
         <aside
           style={{
             border: `1px solid ${ui.panelBorder}`,
-            borderRadius: 24,
+            borderRadius: 16,
             background: ui.panelBg,
-            padding: 10,
-            boxShadow: isDark ? "0 18px 46px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
+            padding: 12,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
-            backdropFilter: "blur(14px)",
+            backdropFilter: "blur(20px)",
           }}
         >
           <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
@@ -1087,15 +1086,14 @@ export default function ChatClient() {
               <div
                 key={session.id}
                 style={{
-                  border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid ${ui.panelBorder}`,
-                  borderRadius: 16,
-                  padding: 4,
+                  border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid rgba(255,255,255,0.03)`,
+                  borderRadius: 12,
+                  padding: "8px 10px",
                   cursor: "pointer",
                   position: "relative",
-                  transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
-                  background: activeSessionId === session.id ? (isDark ? "linear-gradient(180deg, rgba(10,18,34,0.98) 0%, rgba(21,34,58,0.98) 100%)" : "#f8fafc") : ui.controlBg,
-                  boxShadow: activeSessionId === session.id ? (isDark ? "0 12px 30px rgba(37,99,235,0.24)" : "0 10px 20px rgba(15,23,42,0.06)") : "none",
-                  transform: activeSessionId === session.id ? "translateY(-1px) scale(1.01)" : "none",
+                  transition: "all 180ms ease",
+                  background: activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.04)" : "#f8fafc") : "transparent",
+                  boxShadow: activeSessionId === session.id ? "0 4px 12px rgba(0,0,0,0.1)" : "none",
                 }}
               >
                 {editingSessionId === session.id ? (
@@ -1119,19 +1117,19 @@ export default function ChatClient() {
                       }}
                     />
 
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                       <button
                         type="button"
                         onClick={() => handleSaveRename(session.id)}
                         style={{
-                          padding: "8px 12px",
-                          borderRadius: 14,
+                          padding: "6px 10px",
+                          borderRadius: 8,
                           border: `1px solid ${ui.controlBorder}`,
                           background: ui.actionBg,
                           color: ui.actionText,
                           cursor: "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
+                          fontSize: 11,
+                          fontWeight: 600,
                         }}
                       >
                         Save
@@ -1141,14 +1139,14 @@ export default function ChatClient() {
                         type="button"
                         onClick={cancelRenameSession}
                         style={{
-                          padding: "8px 12px",
-                          borderRadius: 14,
+                          padding: "6px 10px",
+                          borderRadius: 8,
                           border: `1px solid ${ui.controlBorder}`,
-                          background: ui.actionBg,
-                          color: ui.actionText,
+                          background: "transparent",
+                          color: ui.subtle,
                           cursor: "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
+                          fontSize: 11,
+                          fontWeight: 600,
                         }}
                       >
                         Cancel
@@ -1178,19 +1176,19 @@ export default function ChatClient() {
                       </div>
                     </button>
 
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
                       <button
                         type="button"
                         onClick={() => startRenameSession(session.id, session.title)}
                         style={{
-                          padding: "8px 12px",
-                          borderRadius: 14,
+                          padding: "5px 10px",
+                          borderRadius: 8,
                           border: `1px solid ${ui.controlBorder}`,
-                          background: ui.actionBg,
-                          color: ui.actionText,
+                          background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
+                          color: ui.text,
                           cursor: "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
+                          fontSize: 11,
+                          fontWeight: 600,
                         }}
                       >
                         Rename
@@ -1200,14 +1198,14 @@ export default function ChatClient() {
                         type="button"
                         onClick={() => handleDeleteSession(session.id)}
                         style={{
-                          padding: "8px 12px",
-                          borderRadius: 14,
-                          border: `1px solid ${ui.controlBorder}`,
-                          background: ui.actionBg,
-                          color: ui.actionText,
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                          border: `1px solid rgba(239, 68, 68, 0.2)`,
+                          background: "transparent",
+                          color: "#ef4444",
                           cursor: "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
+                          fontSize: 11,
+                          fontWeight: 600,
                         }}
                       >
                         Delete
@@ -1223,10 +1221,10 @@ export default function ChatClient() {
         <section
           style={{
             border: `1px solid ${ui.panelBorder}`,
-            borderRadius: 24,
+            borderRadius: 16,
             background: ui.panelBg,
-            padding: 10,
-            boxShadow: isDark ? "0 18px 40px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
+            padding: 12,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
@@ -1236,11 +1234,11 @@ export default function ChatClient() {
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%", marginBottom: 12 }}>
                 <div>
-                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Mode</label>
+                  <label style={{ display: "block", marginBottom: 3, fontSize: 10, fontWeight: 700, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.3 }}>Mode</label>
                   <select
                     value={activeSession.workflowMode}
                     onChange={(e) => updateActiveSessionField("workflowMode", e.target.value as "direct" | "multi-step")}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: "transparent", color: ui.text, fontSize: 12 }}
                   >
                     <option value="direct">Direct</option>
                     <option value="multi-step">Multi-step</option>
@@ -1281,11 +1279,11 @@ export default function ChatClient() {
                 </div>
 
                 <div>
-                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Response mode</label>
+                  <label style={{ display: "block", marginBottom: 3, fontSize: 10, fontWeight: 700, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.3 }}>Response mode</label>
                   <select
                     value={activeSession.transport}
                     onChange={(e) => updateActiveSessionField("transport", e.target.value as "normal" | "stream")}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: "transparent", color: ui.text, fontSize: 12 }}
                   >
                     <option value="stream">Streaming</option>
                     <option value="normal">Normal</option>
@@ -1299,12 +1297,12 @@ export default function ChatClient() {
                 style={{
                   flex: 1,
                   border: `1px solid ${ui.panelBorder}`,
-                  borderRadius: 22,
-                  padding: "12px 12px 120px 12px",
+                  borderRadius: 16,
+                  padding: "16px 16px 100px 16px",
                   background: ui.chatCanvas,
                   overflowY: "auto",
                   overflowX: "hidden",
-                  boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
+                  boxShadow: isDark ? "inset 0 2px 8px rgba(0,0,0,0.2)" : "inset 0 2px 4px rgba(0,0,0,0.02)",
                   scrollBehavior: "smooth",
                 }}
               >
@@ -1332,18 +1330,18 @@ export default function ChatClient() {
                           style={{
                             display: "flex",
                             justifyContent: message.role === "user" ? "flex-end" : "flex-start",
-                            marginTop: isFirstInGroup ? 4 : -8, // Tighter spacing for groups
+                            marginTop: isFirstInGroup ? 6 : -2, // Smoother stacking
                           }}
                         >
                           <div
                             style={{
                               maxWidth: "85%",
-                              padding: "5px 10px",
-                              borderRadius: 16,
-                              background: message.role === "user" ? ui.userBubble : ui.assistantBubble,
+                              padding: "8px 12px",
+                              borderRadius: 12,
+                              background: message.role === "user" ? (isDark ? "#2563eb" : "#3b82f6") : ui.assistantBubble,
                               color: message.role === "user" ? "#fff" : ui.text,
-                              border: message.role === "user" ? `1px solid ${ui.userBubble}` : `1px solid ${ui.assistantBorder}`,
-                              boxShadow: isDark ? "0 10px 30px rgba(0,0,0,0.25)" : "0 8px 20px rgba(15, 23, 42, 0.05)",
+                              border: `1px solid ${message.role === "user" ? "rgba(255,255,255,0.1)" : ui.assistantBorder}`,
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                               position: "relative",
                             }}
                           >
@@ -1422,18 +1420,16 @@ export default function ChatClient() {
                                   type="button"
                                   onClick={() => copyWholeMessage(message.content)}
                                   style={{
-                                    padding: "4px 8px",
-                                    borderRadius: 8,
-                                    border: `1px solid ${ui.controlBorder}`,
-                                    background: ui.actionBg,
-                                    color: ui.actionText,
+                                    padding: "3px 8px",
+                                    borderRadius: 6,
+                                    border: `1px solid ${ui.panelBorder}`,
+                                    background: "rgba(255,255,255,0.03)",
+                                    color: ui.subtle,
                                     cursor: "pointer",
                                     fontSize: 10,
-                                    fontWeight: 700,
-                                    transition: "all 150ms ease",
+                                    fontWeight: 600,
+                                    marginTop: 4,
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = ui.accent; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = ui.controlBorder; }}
                                 >
                                   Copy
                                 </button>
@@ -1476,7 +1472,7 @@ export default function ChatClient() {
                   </div>
                 ) : null}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end", padding: "6px 10px", borderRadius: 18, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(15,23,42,0.95)" : "#ffffff", boxShadow: isDark ? "0 10px 40px rgba(0,0,0,0.4)" : "0 10px 30px rgba(15,23,42,0.08)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", padding: "6px", borderRadius: 14, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(10,18,34,0.7)" : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", backdropFilter: "blur(12px)" }}>
                   <div>
                     <textarea
                       value={input}
@@ -1485,16 +1481,16 @@ export default function ChatClient() {
                       style={{
                         width: "100%",
                         minHeight: 80,
-                        padding: "10px 12px",
-                        borderRadius: 16,
-                        border: `1px solid ${ui.controlBorder}`,
+                        padding: "12px",
+                        borderRadius: 10,
+                        border: `1px solid transparent`,
                         fontSize: 15,
                         boxSizing: "border-box",
                         resize: "vertical",
-                        boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
-                        lineHeight: 1.6,
-                        background: ui.controlBg,
+                        lineHeight: 1.5,
+                        background: "transparent",
                         color: ui.text,
+                        outline: "none",
                       }}
                     />
                   </div>
@@ -1504,19 +1500,20 @@ export default function ChatClient() {
                     onClick={handleSend}
                     disabled={!input.trim() || isSending}
                     style={{
-                      padding: "10px 16px",
-                      borderRadius: 14,
-                      border: "1px solid rgba(96,165,250,0.28)",
-                      background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%)",
-                      boxShadow: isDark ? "0 12px 28px rgba(37,99,235,0.42)" : "0 10px 22px rgba(37,99,235,0.20)",
+                      padding: "10px 20px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
+                      boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
                       color: "#fff",
                       cursor: !input.trim() || isSending ? "not-allowed" : "pointer",
                       fontWeight: 700,
-                      minWidth: 116,
-                      height: 44,
+                      minWidth: 100,
+                      height: 48,
+                      opacity: !input.trim() || isSending ? 0.6 : 1,
                     }}
                   >
-                    {isSending ? "Sending..." : "Send"}
+                    {isSending ? "..." : "Send"}
                   </button>
                 </div>
               </div>
