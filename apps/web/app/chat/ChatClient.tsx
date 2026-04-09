@@ -357,6 +357,10 @@ function RichMessageContent({
         @keyframes blink {
           50% { opacity: 0; }
         }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.2); }
+        }
       `}</style>
     </div>
   );
@@ -1286,10 +1290,11 @@ export default function ChatClient() {
                     <br />
                     <strong>Agent view:</strong> Frontend now recognizes labels like <code>[planner]</code> and <code>[executor]</code> if your backend starts returning them later.
                   </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {activeSession.messages.map((message) => {
+                                 <div style={{ display: "grid", gap: 14 }}>
+                    {activeSession.messages.map((message, idx) => {
+                      const isFirstInGroup = idx === 0 || activeSession.messages[idx - 1].role !== message.role;
                       const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
+                      const isStreaming = isSending && message.role === "assistant" && idx === activeSession.messages.length - 1;
 
                       return (
                         <div
@@ -1297,71 +1302,112 @@ export default function ChatClient() {
                           style={{
                             display: "flex",
                             justifyContent: message.role === "user" ? "flex-end" : "flex-start",
+                            marginTop: isFirstInGroup ? 8 : -6, // Tighter spacing for groups
                           }}
                         >
                           <div
                             style={{
-                              maxWidth: "76%",
-                              padding: 14,
-                              borderRadius: 16,
+                              maxWidth: "80%",
+                              padding: "12px 16px",
+                              borderRadius: 18,
                               background: message.role === "user" ? ui.userBubble : ui.assistantBubble,
                               color: message.role === "user" ? "#fff" : ui.text,
                               border: message.role === "user" ? `1px solid ${ui.userBubble}` : `1px solid ${ui.assistantBorder}`,
-                              boxShadow: isDark ? "0 16px 34px rgba(2, 6, 23, 0.36)" : "0 10px 24px rgba(15, 23, 42, 0.06)",
+                              boxShadow: isDark ? "0 10px 30px rgba(0,0,0,0.25)" : "0 8px 20px rgba(15, 23, 42, 0.05)",
+                              position: "relative",
                             }}
                           >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <div style={{ fontSize: 11, opacity: 0.82, fontWeight: 700 }}>
-                                  {message.role === "user" ? "You" : "EvoFlow AI"}
-                                </div>
-
-                                {message.role === "assistant" && agentViewEnabled && agent ? (
-                                  <span
+                            {isFirstInGroup && (
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  {/* Role Avatar/Badge */}
+                                  <div
                                     style={{
-                                      padding: "5px 9px",
-                                      borderRadius: 999,
-                                      fontSize: 10.5,
+                                      width: 24,
+                                      height: 24,
+                                      borderRadius: "50%",
+                                      background: message.role === "user" ? "linear-gradient(135deg, #3b82f6, #2563eb)" : "linear-gradient(135deg, #475467, #1e293b)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontSize: 10,
                                       fontWeight: 800,
-                                      letterSpacing: 0.2,
-                                      background: isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.06)",
-                                      color: agent.accent,
-                                      border: `1px solid ${agent.accent}22`,
+                                      color: "#fff",
+                                      boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
                                     }}
                                   >
-                                    {agent.label}
-                                  </span>
-                                ) : null}
-                              </div>
+                                    {message.role === "user" ? "U" : "AI"}
+                                  </div>
+                                  
+                                  <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase" }}>
+                                    {message.role === "user" ? "You" : "EvoFlow AI"}
+                                  </div>
 
+                                  {message.role === "assistant" && agentViewEnabled && agent ? (
+                                    <span
+                                      style={{
+                                        padding: "3px 8px",
+                                        borderRadius: 999,
+                                        fontSize: 9.5,
+                                        fontWeight: 800,
+                                        letterSpacing: 0.2,
+                                        background: isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.04)",
+                                        color: agent.accent,
+                                        border: `1px solid ${agent.accent}33`,
+                                      }}
+                                    >
+                                      {agent.label}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            )}
+
+                            <RichMessageContent
+                              content={message.content}
+                              isStreaming={isStreaming}
+                            />
+
+                            {/* Streaming Indicator */}
+                            {isStreaming && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, opacity: 0.8 }}>
+                                <div style={{ display: "flex", gap: 3 }}>
+                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite" }} />
+                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite 0.2s" }} />
+                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite 0.4s" }} />
+                                </div>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: ui.accent, letterSpacing: 0.5, textTransform: "uppercase" }}>
+                                  AI is thinking...
+                                </span>
+                              </div>
+                            )}
+
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, opacity: 0.5 }}>
+                              <div style={{ fontSize: 10 }}>
+                                {message.model ? `${message.model} · ` : ""}{message.transport || activeSession.transport}
+                              </div>
+                              
                               {message.role === "assistant" && (
                                 <button
                                   type="button"
                                   onClick={() => copyWholeMessage(message.content)}
                                   style={{
-                                    padding: "5px 9px",
-                                    borderRadius: 9,
+                                    padding: "4px 8px",
+                                    borderRadius: 8,
                                     border: `1px solid ${ui.controlBorder}`,
                                     background: ui.actionBg,
                                     color: ui.actionText,
                                     cursor: "pointer",
-                                    fontSize: 12,
+                                    fontSize: 10,
                                     fontWeight: 700,
-                                    transition: "transform 120ms ease, box-shadow 120ms ease",
+                                    transition: "all 150ms ease",
                                   }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = ui.accent; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = ui.controlBorder; }}
                                 >
                                   Copy
                                 </button>
                               )}
-                            </div>
-
-                            <RichMessageContent
-                              content={message.content}
-                              isStreaming={isSending && message.role === "assistant" && message.id === activeSession.messages[activeSession.messages.length - 1]?.id}
-                            />
-
-                            <div style={{ fontSize: 11, opacity: 0.72, marginTop: 10 }}>
-                              {message.model ? `${message.model} · ` : ""}{message.transport || activeSession.transport}
                             </div>
                           </div>
                         </div>
