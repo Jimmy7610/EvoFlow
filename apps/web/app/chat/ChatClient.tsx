@@ -1290,7 +1290,8 @@ export default function ChatClient() {
                     <br />
                     <strong>Agent view:</strong> Frontend now recognizes labels like <code>[planner]</code> and <code>[executor]</code> if your backend starts returning them later.
                   </div>
-                                 <div style={{ display: "grid", gap: 14 }}>
+                ) : (
+                  <div style={{ display: "grid", gap: 14 }}>
                     {activeSession.messages.map((message, idx) => {
                       const isFirstInGroup = idx === 0 || activeSession.messages[idx - 1].role !== message.role;
                       const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
@@ -1412,7 +1413,7 @@ export default function ChatClient() {
                           </div>
                         </div>
                       );
-                    })}
+                    )})}
                   </div>
                 )}
               </div>
