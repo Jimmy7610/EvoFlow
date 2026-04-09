@@ -71,6 +71,11 @@ export default async function WorkflowsPage() {
 
   return (
     <main style={{ maxWidth: 1000, margin: "0 auto", padding: 24 }}>
+      <nav style={{ display: 'flex', gap: 20, marginBottom: 32, fontSize: 14 }}>
+        <Link href="/">Dashboard</Link>
+        <Link href="/workflows" style={{ fontWeight: 'bold' }}>Workflows</Link>
+        <Link href="/chat">Chat</Link>
+      </nav>
       <h1 style={{ fontSize: 40, marginBottom: 8 }}>Workflows</h1>
       <p style={{ color: "#666", marginBottom: 24 }}>
         API base URL: {API_BASE_URL}

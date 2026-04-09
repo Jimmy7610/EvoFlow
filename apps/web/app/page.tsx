@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 const DEMO_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || '';
@@ -122,6 +123,12 @@ export default function Page() {
 
   return (
     <main style={{ padding: 24, fontFamily: 'Arial, sans-serif' }}>
+      <nav style={{ display: 'flex', gap: 20, marginBottom: 32, fontSize: 14 }}>
+        <Link href="/" style={{ fontWeight: 'bold' }}>Dashboard</Link>
+        <Link href="/workflows">Workflows</Link>
+        <Link href="/chat">Chat</Link>
+      </nav>
+
       <h1 style={{ marginBottom: 8 }}>EvoFlow Testpanel V4</h1>
       <p style={{ marginTop: 0, color: '#666' }}>
         Textarea JSON is the source of truth. What you see here is exactly what gets posted.

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 type Message = {
   id: string;
@@ -816,10 +817,10 @@ export default function ChatClient() {
     <main
       style={{
         width: "100%",
-        height: "calc(100vh - 86px)",
+        height: "100vh",
         maxWidth: "1800px",
         margin: "0 auto",
-        padding: "8px 16px",
+        padding: "6px 12px",
         display: "flex",
         flexDirection: "column",
         background: ui.pageBg,
@@ -833,25 +834,29 @@ export default function ChatClient() {
           zIndex: 100,
           background: isDark ? "rgba(7,17,31,0.85)" : "rgba(255,255,255,0.85)",
           backdropFilter: "blur(12px)",
-          margin: "0 0 12px 0",
-          padding: "16px 20px",
+          margin: "0 0 8px 0",
+          padding: "10px 16px",
           borderRadius: 24,
           border: `1px solid ${ui.panelBorder}`,
           boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.2)" : "0 4px 20px rgba(0,0,0,0.05)",
         }}
       >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
         <div>
-          <h1 style={{ fontSize: 34, lineHeight: 1.0, letterSpacing: -0.9, margin: 0 }}>EvoFlow Chat</h1>
-          <div style={{ color: ui.muted, marginTop: 4, fontSize: 14, maxWidth: 680, lineHeight: 1.35 }}>
-            Stateful local chat mode with Ollama, sessions, streaming and model controls.
+          <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+            <h1 style={{ fontSize: 22, lineHeight: 1.0, letterSpacing: -0.5, margin: 0 }}>EvoFlow Chat</h1>
+            <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 700 }}>
+              <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.7 }}>Dashboard</Link>
+              <Link href="/workflows" style={{ color: ui.accent, textDecoration: "none", opacity: 0.7 }}>Workflows</Link>
+              <Link href="/chat" style={{ color: ui.text, textDecoration: "none" }}>Chat</Link>
+            </nav>
           </div>
-          <div style={{ color: ui.subtle, marginTop: 2, fontSize: 11.5, maxWidth: 660, lineHeight: 1.3 }}>
-            V20: wider layout alignment plus Start/Avsluta controls for the managed background worker.
+          <div style={{ color: ui.subtle, marginTop: 4, fontSize: 11.5, opacity: 0.8 }}>
+            Local Ollama mode · Multi-step & Streaming · V27 Compact
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "6px 10px", borderRadius: 14, background: isDark ? "rgba(7,17,31,0.58)" : "rgba(255,255,255,0.78)", border: `1px solid ${ui.panelBorder}`, backdropFilter: "blur(14px)", maxWidth: "100%" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "4px 8px", borderRadius: 12, background: isDark ? "rgba(7,17,31,0.58)" : "rgba(255,255,255,0.78)", border: `1px solid ${ui.panelBorder}`, backdropFilter: "blur(14px)" }}>
           <button
             type="button"
             onClick={() => handleDevControl("start")}
@@ -954,7 +959,7 @@ export default function ChatClient() {
             type="button"
             onClick={handleCreateSession}
             style={{
-              padding: "9px 13px",
+              padding: "6px 10px",
               borderRadius: 14,
               border: "1px solid rgba(96,165,250,0.24)",
               background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%)",
@@ -1049,11 +1054,11 @@ export default function ChatClient() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "260px minmax(0, 1fr)",
-          gap: 16,
+          gridTemplateColumns: "230px minmax(0, 1fr)",
+          gap: 10,
           flex: 1,
           alignItems: "stretch",
-          padding: "0 4px 12px 4px",
+          padding: "0 4px 8px 4px",
           overflow: "hidden",
         }}
       >
@@ -1062,7 +1067,7 @@ export default function ChatClient() {
             border: `1px solid ${ui.panelBorder}`,
             borderRadius: 24,
             background: ui.panelBg,
-            padding: 14,
+            padding: 10,
             boxShadow: isDark ? "0 18px 46px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
             display: "flex",
             flexDirection: "column",
@@ -1077,14 +1082,14 @@ export default function ChatClient() {
             Local sessions stay on this device. Import safely merges chat backups.
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, paddingRight: 4 }}>
+          <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6, paddingRight: 4 }}>
             {sessions.map((session) => (
               <div
                 key={session.id}
                 style={{
                   border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid ${ui.panelBorder}`,
                   borderRadius: 16,
-                  padding: 6,
+                  padding: 4,
                   cursor: "pointer",
                   position: "relative",
                   transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
@@ -1220,7 +1225,7 @@ export default function ChatClient() {
             border: `1px solid ${ui.panelBorder}`,
             borderRadius: 24,
             background: ui.panelBg,
-            padding: 14,
+            padding: 10,
             boxShadow: isDark ? "0 18px 40px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
             display: "flex",
             flexDirection: "column",
@@ -1295,7 +1300,7 @@ export default function ChatClient() {
                   flex: 1,
                   border: `1px solid ${ui.panelBorder}`,
                   borderRadius: 22,
-                  padding: "16px 16px 120px 16px",
+                  padding: "12px 12px 120px 12px",
                   background: ui.chatCanvas,
                   overflowY: "auto",
                   overflowX: "hidden",
@@ -1332,9 +1337,9 @@ export default function ChatClient() {
                         >
                           <div
                             style={{
-                              maxWidth: "80%",
-                              padding: "12px 16px",
-                              borderRadius: 18,
+                              maxWidth: "85%",
+                              padding: "8px 12px",
+                              borderRadius: 16,
                               background: message.role === "user" ? ui.userBubble : ui.assistantBubble,
                               color: message.role === "user" ? "#fff" : ui.text,
                               border: message.role === "user" ? `1px solid ${ui.userBubble}` : `1px solid ${ui.assistantBorder}`,
@@ -1348,14 +1353,14 @@ export default function ChatClient() {
                                   {/* Role Avatar/Badge */}
                                   <div
                                     style={{
-                                      width: 24,
-                                      height: 24,
+                                      width: 20,
+                                      height: 20,
                                       borderRadius: "50%",
                                       background: message.role === "user" ? "linear-gradient(135deg, #3b82f6, #2563eb)" : "linear-gradient(135deg, #475467, #1e293b)",
                                       display: "flex",
                                       alignItems: "center",
                                       justifyContent: "center",
-                                      fontSize: 10,
+                                      fontSize: 9,
                                       fontWeight: 800,
                                       color: "#fff",
                                       boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
@@ -1471,20 +1476,19 @@ export default function ChatClient() {
                   </div>
                 ) : null}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end", padding: "10px 14px", borderRadius: 20, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(15,23,42,0.95)" : "#ffffff", boxShadow: isDark ? "0 10px 40px rgba(0,0,0,0.4)" : "0 10px 30px rgba(15,23,42,0.08)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "end", padding: "6px 10px", borderRadius: 18, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(15,23,42,0.95)" : "#ffffff", boxShadow: isDark ? "0 10px 40px rgba(0,0,0,0.4)" : "0 10px 30px rgba(15,23,42,0.08)" }}>
                   <div>
-                    <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Message</label>
                     <textarea
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder="Write your next message here..."
                       style={{
                         width: "100%",
-                        minHeight: 68,
-                        padding: 12,
-                        borderRadius: 18,
+                        minHeight: 44,
+                        padding: "8px 10px",
+                        borderRadius: 16,
                         border: `1px solid ${ui.controlBorder}`,
-                        fontSize: 15,
+                        fontSize: 14,
                         boxSizing: "border-box",
                         resize: "vertical",
                         boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
