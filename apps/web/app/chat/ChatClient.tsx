@@ -305,7 +305,7 @@ function RichMessageContent({
                   wordBreak: "break-word",
                   fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
                   fontSize: 12.5,
-                  lineHeight: 1.55,
+                  lineHeight: 1.4,
                   color: "#f8fafc",
                 }}
               >
@@ -317,10 +317,10 @@ function RichMessageContent({
 
         const lines = block.value.split("\n");
         return (
-          <div key={`text-${index}`} style={{ display: "grid", gap: 8 }}>
+          <div key={`text-${index}`} style={{ display: "grid", gap: 4 }}>
             {lines.map((line, lineIndex) => {
               const trimmed = line.trim();
-              if (!trimmed) return <div key={`spacer-${lineIndex}`} style={{ height: 6 }} />;
+              if (!trimmed) return <div key={`spacer-${lineIndex}`} style={{ height: 2 }} />;
               if (trimmed.startsWith("### ")) return <h3 key={lineIndex} style={{ margin: 0, fontSize: 17 }}>{trimmed.slice(4)}</h3>;
               if (trimmed.startsWith("## ")) return <h2 key={lineIndex} style={{ margin: 0, fontSize: 19 }}>{trimmed.slice(3)}</h2>;
               if (trimmed.startsWith("# ")) return <h1 key={lineIndex} style={{ margin: 0, fontSize: 20 }}>{trimmed.slice(2)}</h1>;
@@ -335,14 +335,14 @@ function RichMessageContent({
               if (/^\d+\.\s/.test(trimmed)) {
                 const firstDot = trimmed.indexOf(".");
                 return (
-                  <div key={lineIndex} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                  <div key={lineIndex} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                     <span style={{ fontWeight: 800 }}>{trimmed.slice(0, firstDot + 1)}</span>
                     <span>{trimmed.slice(firstDot + 2)}</span>
                   </div>
                 );
               }
               return (
-                <p key={lineIndex} style={{ margin: 0, lineHeight: 1.62 }}>
+                <p key={lineIndex} style={{ margin: 0, lineHeight: 1.4 }}>
                   {line}
                   {isStreaming && index === blocks.length - 1 && lineIndex === lines.length - 1 ? (
                     <span style={{ marginLeft: 2, animation: "blink 1s step-end infinite" }}>▌</span>
@@ -1168,15 +1168,13 @@ export default function ChatClient() {
                         color: ui.text,
                       }}
                     >
-                      <div style={{ fontWeight: 700, marginBottom: 6 }}>{session.title}</div>
-                      <div style={{ fontSize: 12, color: ui.subtle, lineHeight: 1.6 }}>
-                        {session.messages.length} messages
-                        <br />
-                        {session.modelSelection} · {session.transport}
+                      <div style={{ fontWeight: 700, marginBottom: 2, fontSize: 13, lineHeight: 1.2 }}>{session.title}</div>
+                      <div style={{ fontSize: 11, color: ui.subtle, lineHeight: 1.3 }}>
+                        {session.messages.length} messages · {session.modelSelection} · {session.transport}
                       </div>
                     </button>
 
-                    <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       <button
                         type="button"
                         onClick={() => startRenameSession(session.id, session.title)}
@@ -1401,7 +1399,7 @@ export default function ChatClient() {
 
                             {/* Streaming Indicator */}
                             {isStreaming && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, opacity: 0.8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, opacity: 0.8 }}>
                                 <div style={{ display: "flex", gap: 3 }}>
                                   <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite" }} />
                                   <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite 0.2s" }} />
@@ -1413,7 +1411,7 @@ export default function ChatClient() {
                               </div>
                             )}
 
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, opacity: 0.5 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, opacity: 0.5 }}>
                               <div style={{ fontSize: 10 }}>
                                 {message.model ? `${message.model} · ` : ""}{message.transport || activeSession.transport}
                               </div>
@@ -1450,12 +1448,10 @@ export default function ChatClient() {
                 style={{
                   position: "sticky",
                   bottom: 0,
-                  marginTop: -90, // Pull up to overlap with the padding
-                  padding: "40px 10px 10px 10px",
-                  background: isDark
-                    ? "linear-gradient(180deg, rgba(10,18,34,0) 0%, rgba(10,18,34,0.92) 40%, rgba(10,18,34,1) 100%)"
-                    : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.94) 40%, rgba(255,255,255,1) 100%)",
-                  backdropFilter: "blur(8px)",
+                  marginTop: -40, 
+                  padding: "20px 10px 10px 10px",
+                  background: ui.chatCanvas,
+                  borderTop: `1px solid ${ui.panelBorder}`,
                   zIndex: 10,
                 }}
               >
@@ -1475,7 +1471,7 @@ export default function ChatClient() {
                   </div>
                 ) : null}
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", padding: "6px", borderRadius: 14, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(10,18,34,0.7)" : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", backdropFilter: "blur(12px)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", padding: "6px", borderRadius: 14, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(10,18,34,0.9)" : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
                   <div>
                     <textarea
                       value={input}
@@ -1483,14 +1479,14 @@ export default function ChatClient() {
                       placeholder="Write your next message here..."
                       style={{
                         width: "100%",
-                        minHeight: 80,
+                        minHeight: 120,
                         padding: "12px",
                         borderRadius: 10,
                         border: `1px solid transparent`,
                         fontSize: 15,
                         boxSizing: "border-box",
                         resize: "vertical",
-                        lineHeight: 1.5,
+                        lineHeight: 1.3,
                         background: "transparent",
                         color: ui.text,
                         outline: "none",
