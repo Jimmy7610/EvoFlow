@@ -1078,7 +1078,7 @@ export default function ChatClient() {
           <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
             Sessions
           </div>
-          <div style={{ fontSize: 12, color: ui.subtle, marginBottom: 8, lineHeight: 1.35 }}>
+          <div style={{ fontSize: 12, color: ui.subtle, marginBottom: 4, lineHeight: 1.35 }}>
             Local sessions stay on this device. Import safely merges chat backups.
           </div>
 
@@ -1320,7 +1320,7 @@ export default function ChatClient() {
                     <strong>Agent view:</strong> Frontend now recognizes labels like <code>[planner]</code> and <code>[executor]</code> if your backend starts returning them later.
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gap: 14 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
                     {activeSession.messages.map((message, idx) => {
                       const isFirstInGroup = idx === 0 || activeSession.messages[idx - 1].role !== message.role;
                       const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
@@ -1332,13 +1332,13 @@ export default function ChatClient() {
                           style={{
                             display: "flex",
                             justifyContent: message.role === "user" ? "flex-end" : "flex-start",
-                            marginTop: isFirstInGroup ? 8 : -6, // Tighter spacing for groups
+                            marginTop: isFirstInGroup ? 4 : -8, // Tighter spacing for groups
                           }}
                         >
                           <div
                             style={{
                               maxWidth: "85%",
-                              padding: "8px 12px",
+                              padding: "5px 10px",
                               borderRadius: 16,
                               background: message.role === "user" ? ui.userBubble : ui.assistantBubble,
                               color: message.role === "user" ? "#fff" : ui.text,
@@ -1348,7 +1348,7 @@ export default function ChatClient() {
                             }}
                           >
                             {isFirstInGroup && (
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 10 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                   {/* Role Avatar/Badge */}
                                   <div
@@ -1463,7 +1463,7 @@ export default function ChatClient() {
                 {errorText ? (
                   <div
                     style={{
-                      marginBottom: 8,
+                      marginBottom: 4,
                       padding: 10,
                       border: "1px solid #f5c2c7",
                       borderRadius: 18,
@@ -1484,11 +1484,11 @@ export default function ChatClient() {
                       placeholder="Write your next message here..."
                       style={{
                         width: "100%",
-                        minHeight: 44,
-                        padding: "8px 10px",
+                        minHeight: 80,
+                        padding: "10px 12px",
                         borderRadius: 16,
                         border: `1px solid ${ui.controlBorder}`,
-                        fontSize: 14,
+                        fontSize: 15,
                         boxSizing: "border-box",
                         resize: "vertical",
                         boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
