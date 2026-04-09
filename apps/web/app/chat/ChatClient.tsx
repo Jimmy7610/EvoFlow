@@ -372,6 +372,18 @@ export default function ChatClient() {
 
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
+  useEffect(() => {
+    // Lock body scroll for the fixed dashboard feel
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalBodyOverflow;
+      document.documentElement.style.overflow = originalHtmlOverflow;
+    };
+  }, []);
+
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("");
   const [input, setInput] = useState("");
@@ -804,27 +816,27 @@ export default function ChatClient() {
     <main
       style={{
         width: "100%",
+        height: "calc(100vh - 86px)",
         maxWidth: "1800px",
         margin: "0 auto",
-        padding: "12px 16px",
+        padding: "8px 16px",
+        display: "flex",
+        flexDirection: "column",
         background: ui.pageBg,
         backdropFilter: "blur(6px)",
-        borderRadius: 32,
-        border: `1px solid ${ui.pageBorder}`,
         color: ui.text,
-        boxShadow: isDark ? "0 30px 80px rgba(2, 6, 23, 0.55)" : "0 20px 48px rgba(15, 23, 42, 0.08)",
+        overflow: "hidden",
       }}
     >
       <div
         style={{
-          position: "sticky",
-          top: -12, // Offset the main padding
           zIndex: 100,
           background: isDark ? "rgba(7,17,31,0.85)" : "rgba(255,255,255,0.85)",
           backdropFilter: "blur(12px)",
-          margin: "-12px -16px 16px -16px",
+          margin: "0 0 12px 0",
           padding: "16px 20px",
-          borderBottom: `1px solid ${ui.panelBorder}`,
+          borderRadius: 24,
+          border: `1px solid ${ui.panelBorder}`,
           boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.2)" : "0 4px 20px rgba(0,0,0,0.05)",
         }}
       >
@@ -1039,13 +1051,10 @@ export default function ChatClient() {
           display: "grid",
           gridTemplateColumns: "260px minmax(0, 1fr)",
           gap: 16,
-          minHeight: "88vh",
+          flex: 1,
           alignItems: "stretch",
-          padding: "4px 12px",
-          background: ui.pageBg, backdropFilter: "blur(6px)",
-          borderRadius: 14,
-          border: `1px solid ${ui.pageBorder}`,
-          boxShadow: isDark ? "0 20px 50px rgba(2, 6, 23, 0.42)" : "0 20px 48px rgba(15, 23, 42, 0.08)",
+          padding: "0 4px 12px 4px",
+          overflow: "hidden",
         }}
       >
         <aside
@@ -1055,6 +1064,8 @@ export default function ChatClient() {
             background: ui.panelBg,
             padding: 14,
             boxShadow: isDark ? "0 18px 46px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
+            display: "flex",
+            flexDirection: "column",
             overflow: "hidden",
             backdropFilter: "blur(14px)",
           }}
@@ -1066,7 +1077,7 @@ export default function ChatClient() {
             Local sessions stay on this device. Import safely merges chat backups.
           </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, paddingRight: 4 }}>
             {sessions.map((session) => (
               <div
                 key={session.id}
@@ -1207,19 +1218,18 @@ export default function ChatClient() {
         <section
           style={{
             border: `1px solid ${ui.panelBorder}`,
-            borderRadius: 20,
+            borderRadius: 24,
             background: ui.panelBg,
             padding: 14,
             boxShadow: isDark ? "0 18px 40px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
-            display: "grid",
-            gridTemplateRows: "auto 1fr auto",
-            gap: 16,
-            minHeight: "75vh",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
           }}
         >
           {activeSession ? (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%", marginBottom: 12 }}>
                 <div>
                   <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Mode</label>
                   <select
@@ -1282,13 +1292,12 @@ export default function ChatClient() {
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
                 style={{
+                  flex: 1,
                   border: `1px solid ${ui.panelBorder}`,
                   borderRadius: 22,
-                  padding: "8px 8px 100px 8px", // Added large bottom padding for sticky bar
+                  padding: "16px 16px 120px 16px",
                   background: ui.chatCanvas,
                   overflowY: "auto",
-                  minHeight: 660,
-                  maxHeight: "calc(100vh - 190px)",
                   overflowX: "hidden",
                   boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
                   scrollBehavior: "smooth",
