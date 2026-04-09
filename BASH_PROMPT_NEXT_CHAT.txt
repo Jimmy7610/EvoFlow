@@ -1,0 +1,27 @@
+```bash
+Project: EvoFlow AI Ops (local)
+
+Current working patch status:
+- apps/web now posts exact textarea JSON
+- frontend sends Bearer token from NEXT_PUBLIC_DEMO_TOKEN
+- frontend tries both http://localhost:4000/runs and /api/runs
+- root cause found: old apps/api had no POST /runs or POST /api/runs route registered
+- new patch replaces apps/api/src/index.ts with a local working route implementation
+- local patch uses in-memory runs so direct mode and memory-chain tests work immediately without DB schema guessing
+
+What was fixed:
+1) direct mode exact reply support
+2) missing create-run endpoint
+3) valid JSON response from API
+4) memory-chain test for email validator follow-ups
+5) textarea JSON remains source of truth
+
+What to test first:
+- BANAN direct test
+- memory test 1, 2, 3 in order
+
+What to do next after confirming it works:
+- wire the same V4 behavior into the real Postgres/Redis/worker pipeline
+- reintroduce persistence without losing exact direct-mode behavior
+- keep smarter memory relevance, avoid irrelevant old matches
+```

@@ -1,0 +1,13 @@
+{
+  "name": "evoflow-root-runner",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "fix:workspace": "powershell -ExecutionPolicy Bypass -File \".\\tools\\fix-workspace-deps.ps1\"",
+    "install:web": "npm --prefix apps/web install",
+    "install:api": "npm --prefix apps/api install",
+    "install:worker": "npm --prefix workers/executor install",
+    "install:all": "npm run install:web && npm run install:api && npm run install:worker",
+    "dev": "start \"EvoFlow Web\" cmd /k \"cd /d C:\\EvoFlow\\apps\\web && npm run dev\" && start \"EvoFlow API\" cmd /k \"cd /d C:\\EvoFlow\\apps\\api && npm run dev\" && start \"EvoFlow Worker\" cmd /k \"cd /d C:\\EvoFlow\\workers\\executor && npm run dev\""
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "baseUrl": "./src",
+    "declaration": false
+  },
+  "include": ["src", "prisma/seed.ts"]
+}

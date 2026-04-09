@@ -1,0 +1,1454 @@
+
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  model?: string;
+  modelSelection?: string;
+  transport?: "normal" | "stream";
+};
+
+type Session = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  workflowMode: "direct" | "multi-step";
+  model: string;
+  modelSelection: "auto" | "manual";
+  transport: "normal" | "stream";
+  messages: Message[];
+};
+
+type ModelsResponse = {
+  items?: string[];
+  defaultModel?: string;
+};
+
+type DevControlItem = {
+  label: string;
+  running: boolean;
+  managed: boolean;
+  port?: number;
+  pid?: number | null;
+  startedAt?: string;
+  cwd?: string;
+  command?: string;
+  lastError?: string;
+};
+
+type DevStatusResponse = {
+  success?: boolean;
+  controls?: {
+    api?: DevControlItem;
+    web?: DevControlItem;
+    executor?: DevControlItem;
+  };
+  error?: string;
+};
+
+type AgentRole = "assistant" | "planner" | "executor" | "system" | "critic";
+
+const STORAGE_KEY = "evoflow-chat-sessions-v1";
+const EXPORT_FILE_PREFIX = "evoflow-chat-export";
+
+function uid(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function formatTitle(input: string) {
+  const trimmed = input.trim().replace(/\s+/g, " ");
+  return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed || "New chat";
+}
+
+function createEmptySession(defaultModel: string): Session {
+  const now = new Date().toISOString();
+  return {
+    id: uid("session"),
+    title: "New chat",
+    createdAt: now,
+    updatedAt: now,
+    workflowMode: "multi-step",
+    model: defaultModel,
+    modelSelection: "auto",
+    transport: "stream",
+    messages: [],
+  };
+}
+
+function loadSessions(defaultModel: string): Session[] {
+  if (typeof window === "undefined") return [createEmptySession(defaultModel)];
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [createEmptySession(defaultModel)];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [createEmptySession(defaultModel)];
+    }
+    return parsed as Session[];
+  } catch {
+    return [createEmptySession(defaultModel)];
+  }
+}
+
+function saveSessions(sessions: Session[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+}
+
+async function fetchModels(apiBaseUrl: string, demoToken: string): Promise<{ models: string[]; defaultModel: string }> {
+  const endpoints = ["/ollama/models", "/api/ollama/models"];
+
+  for (const path of endpoints) {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) continue;
+    const data = (await response.json()) as ModelsResponse;
+    const models = Array.isArray(data.items) ? data.items : [];
+    const defaultModel = (typeof data.defaultModel === "string" && data.defaultModel) || models[0] || "";
+    return { models, defaultModel };
+  }
+
+  return { models: [], defaultModel: "" };
+}
+
+function detectAgentRole(content: string): AgentRole {
+  const normalized = (content || "").trim().toLowerCase();
+  if (normalized.startsWith("[planner]") || normalized.startsWith("planner:")) return "planner";
+  if (normalized.startsWith("[executor]") || normalized.startsWith("executor:")) return "executor";
+  if (normalized.startsWith("[system]") || normalized.startsWith("system:")) return "system";
+  if (normalized.startsWith("[critic]") || normalized.startsWith("critic:")) return "critic";
+  return "assistant";
+}
+
+function getAgentPresentation(role: AgentRole) {
+  switch (role) {
+    case "planner":
+      return { label: "Planner", accent: "#7c3aed" };
+    case "executor":
+      return { label: "Executor", accent: "#2563eb" };
+    case "system":
+      return { label: "System", accent: "#0f766e" };
+    case "critic":
+      return { label: "Critic", accent: "#b45309" };
+    default:
+      return { label: "EvoFlow AI", accent: "#475467" };
+  }
+}
+
+function createExportPayload(sessions: Session[]) {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    app: "EvoFlow AI Ops",
+    sessions,
+  };
+}
+
+function normalizeImportedSessions(payload: unknown, defaultModel: string): Session[] {
+  const source = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object" && Array.isArray((payload as { sessions?: unknown[] }).sessions)
+      ? (payload as { sessions: unknown[] }).sessions
+      : [];
+
+  return source.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+
+    const raw = item as Partial<Session> & { messages?: Partial<Message>[] };
+    const now = new Date().toISOString();
+    const messages = Array.isArray(raw.messages)
+      ? raw.messages
+          .filter((message) => message && typeof message === "object")
+          .map((message) => ({
+            id: uid("message"),
+            role: message?.role === "assistant" ? "assistant" : "user",
+            content: typeof message?.content === "string" ? message.content : "",
+            createdAt: typeof message?.createdAt === "string" ? message.createdAt : now,
+            model: typeof message?.model === "string" ? message.model : raw.model || defaultModel,
+            modelSelection: message?.modelSelection === "manual" ? "manual" : "auto",
+            transport: message?.transport === "normal" ? "normal" : "stream",
+          }))
+      : [];
+
+    return [{
+      id: uid("session"),
+      title: typeof raw.title === "string" ? formatTitle(raw.title) : "Imported chat",
+      createdAt: typeof raw.createdAt === "string" ? raw.createdAt : now,
+      updatedAt: now,
+      workflowMode: raw.workflowMode === "direct" ? "direct" : "multi-step",
+      model: typeof raw.model === "string" && raw.model ? raw.model : defaultModel,
+      modelSelection: raw.modelSelection === "manual" ? "manual" : "auto",
+      transport: raw.transport === "normal" ? "normal" : "stream",
+      messages,
+    }];
+  });
+}
+
+
+function detectCodeLanguage(code: string) {
+  const source = code.toLowerCase();
+  if (source.includes("function ") || source.includes("interface ") || source.includes(": string") || source.includes("typescript")) return "typescript";
+  if (source.includes("const ") || source.includes("let ") || source.includes("=>") || source.includes("javascript")) return "javascript";
+  if (source.includes("def ") || source.includes("print(") || source.includes("python")) return "python";
+  if (source.includes("<div") || source.includes("</")) return "html";
+  return "code";
+}
+
+function RichMessageContent({
+  content,
+  isStreaming,
+}: {
+  content: string;
+  isStreaming: boolean;
+}) {
+  async function copyText(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // ignore
+    }
+  }
+
+  const normalized = content || "";
+  const codeBlockRegex = /```([a-zA-Z0-9_-]+)?\n?([\s\S]*?)```/g;
+  const blocks: Array<{ type: "text" | "code"; value: string; language?: string }> = [];
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = codeBlockRegex.exec(normalized)) !== null) {
+    if (match.index > lastIndex) {
+      blocks.push({ type: "text", value: normalized.slice(lastIndex, match.index) });
+    }
+    blocks.push({
+      type: "code",
+      language: match[1] || detectCodeLanguage(match[2] || ""),
+      value: match[2] || "",
+    });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < normalized.length) {
+    blocks.push({ type: "text", value: normalized.slice(lastIndex) });
+  }
+
+  if (blocks.length === 0) {
+    blocks.push({ type: "text", value: normalized });
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {blocks.map((block, index) => {
+        if (block.type === "code") {
+          return (
+            <div
+              key={`code-${index}`}
+              style={{
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 18,
+                overflow: "hidden",
+                background: "#0b1220",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "8px 10px",
+                  background: "#111827",
+                  color: "#cbd5e1",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.4,
+                }}
+              >
+                <span>{block.language || "code"}</span>
+                <button
+                  type="button"
+                  onClick={() => copyText(block.value)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #334155",
+                    background: "#0f172a",
+                    color: "#e2e8f0",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  Copy code
+                </button>
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "6px 10px",
+                  overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontSize: 12.5,
+                  lineHeight: 1.55,
+                  color: "#f8fafc",
+                }}
+              >
+                {block.value}
+              </pre>
+            </div>
+          );
+        }
+
+        const lines = block.value.split("\n");
+        return (
+          <div key={`text-${index}`} style={{ display: "grid", gap: 8 }}>
+            {lines.map((line, lineIndex) => {
+              const trimmed = line.trim();
+              if (!trimmed) return <div key={`spacer-${lineIndex}`} style={{ height: 6 }} />;
+              if (trimmed.startsWith("### ")) return <h3 key={lineIndex} style={{ margin: 0, fontSize: 17 }}>{trimmed.slice(4)}</h3>;
+              if (trimmed.startsWith("## ")) return <h2 key={lineIndex} style={{ margin: 0, fontSize: 19 }}>{trimmed.slice(3)}</h2>;
+              if (trimmed.startsWith("# ")) return <h1 key={lineIndex} style={{ margin: 0, fontSize: 20 }}>{trimmed.slice(2)}</h1>;
+              if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                return (
+                  <div key={lineIndex} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <span style={{ fontWeight: 800 }}>•</span>
+                    <span>{trimmed.slice(2)}</span>
+                  </div>
+                );
+              }
+              if (/^\d+\.\s/.test(trimmed)) {
+                const firstDot = trimmed.indexOf(".");
+                return (
+                  <div key={lineIndex} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <span style={{ fontWeight: 800 }}>{trimmed.slice(0, firstDot + 1)}</span>
+                    <span>{trimmed.slice(firstDot + 2)}</span>
+                  </div>
+                );
+              }
+              return (
+                <p key={lineIndex} style={{ margin: 0, lineHeight: 1.62 }}>
+                  {line}
+                  {isStreaming && index === blocks.length - 1 && lineIndex === lines.length - 1 ? (
+                    <span style={{ marginLeft: 2, animation: "blink 1s step-end infinite" }}>▌</span>
+                  ) : null}
+                </p>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      <style>{`
+        @keyframes blink {
+          50% { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default function ChatClient() {
+  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/+$/, "");
+  const demoToken = process.env.NEXT_PUBLIC_DEMO_TOKEN || "";
+
+  const [models, setModels] = useState<string[]>([]);
+  const [defaultModel, setDefaultModel] = useState("");
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState("");
+  const [input, setInput] = useState("");
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [errorText, setErrorText] = useState("");
+  const [editingSessionId, setEditingSessionId] = useState("");
+  const [editingTitle, setEditingTitle] = useState("");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [agentViewEnabled, setAgentViewEnabled] = useState(true);
+  const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
+  const [isDevActionLoading, setIsDevActionLoading] = useState(false);
+  const [devErrorText, setDevErrorText] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
+  const isDark = theme === "dark";
+  const ui = {
+    pageBg: isDark ? "radial-gradient(circle at top left, rgba(37,99,235,0.22), transparent 28%), radial-gradient(circle at top right, rgba(124,58,237,0.16), transparent 24%), linear-gradient(180deg, #07111f 0%, #0b1220 52%, #111827 100%)" : "linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)",
+    pageBorder: isDark ? "rgba(148,163,184,0.16)" : "#d8dee8",
+    panelBg: isDark ? "rgba(10,18,34,0.76)" : "rgba(255,255,255,0.94)",
+    panelBorder: isDark ? "rgba(96,165,250,0.16)" : "#d8dee8",
+    text: isDark ? "#f8fafc" : "#101828",
+    muted: isDark ? "#a5b4cf" : "#475467",
+    subtle: isDark ? "#8ea3c5" : "#667085",
+    controlBg: isDark ? "rgba(15,23,42,0.9)" : "#ffffff",
+    controlBorder: isDark ? "rgba(96,165,250,0.16)" : "#d0d5dd",
+    chatCanvas: isDark ? "linear-gradient(180deg, rgba(7,17,31,0.84) 0%, rgba(10,18,34,0.92) 100%)" : "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+    userBubble: isDark ? "linear-gradient(180deg, #020617 0%, #0f172a 100%)" : "#111827",
+    assistantBubble: isDark ? "rgba(15,23,42,0.94)" : "#ffffff",
+    assistantBorder: isDark ? "rgba(96,165,250,0.14)" : "#e4e7ec",
+    actionBg: isDark ? "rgba(9,16,30,0.92)" : "#ffffff",
+    actionText: isDark ? "#e2e8f0" : "#101828",
+    accent: "#60a5fa",
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      setIsLoadingModels(true);
+      const result = await fetchModels(apiBaseUrl, demoToken);
+      if (!isMounted) return;
+
+      setModels(result.models);
+      setDefaultModel(result.defaultModel);
+
+      const loaded = loadSessions(result.defaultModel);
+      const normalized = loaded.map((session) => ({
+        ...session,
+        model: session.model || result.defaultModel,
+      }));
+      setSessions(normalized);
+      setActiveSessionId(normalized[0]?.id || "");
+      setIsLoadingModels(false);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [apiBaseUrl, demoToken]);
+
+  useEffect(() => {
+    if (sessions.length > 0) saveSessions(sessions);
+  }, [sessions]);
+
+  useEffect(() => {
+    refreshDevStatus();
+    const timer = window.setInterval(() => {
+      refreshDevStatus();
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [apiBaseUrl, demoToken]);
+
+
+
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) || null,
+    [sessions, activeSessionId]
+  );
+
+  function patchSession(sessionId: string, updater: (session: Session) => Session) {
+    setSessions((prev) => prev.map((session) => (session.id === sessionId ? updater(session) : session)));
+  }
+
+  function startRenameSession(sessionId: string, currentTitle: string) {
+    setEditingSessionId(sessionId);
+    setEditingTitle(currentTitle);
+  }
+
+  function cancelRenameSession() {
+    setEditingSessionId("");
+    setEditingTitle("");
+  }
+
+  function handleSaveRename(sessionId: string) {
+    const nextTitle = formatTitle(editingTitle);
+    patchSession(sessionId, (session) => ({
+      ...session,
+      title: nextTitle,
+      updatedAt: new Date().toISOString(),
+    }));
+    cancelRenameSession();
+  }
+
+  function handleExportChats() {
+    const payload = createExportPayload(sessions);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${EXPORT_FILE_PREFIX}-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const imported = normalizeImportedSessions(parsed, defaultModel);
+
+      if (imported.length === 0) {
+        setErrorText("Import failed: no valid chat sessions were found in the selected file.");
+        return;
+      }
+
+      setSessions((prev) => [...imported, ...prev]);
+      setActiveSessionId(imported[0].id);
+      cancelRenameSession();
+      setErrorText("");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      setErrorText(`Import failed: ${text}`);
+    }
+  }
+
+  async function copyWholeMessage(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error("Failed to copy message:", error);
+    }
+  }
+
+  function handleCreateSession() {
+    const next = createEmptySession(defaultModel);
+    setSessions((prev) => [next, ...prev]);
+    setActiveSessionId(next.id);
+    setInput("");
+    setErrorText("");
+  }
+
+  function handleDeleteSession(sessionId: string) {
+    if (editingSessionId === sessionId) {
+      cancelRenameSession();
+    }
+
+    setSessions((prev) => {
+      const next = prev.filter((session) => session.id !== sessionId);
+      if (next.length === 0) {
+        const fallback = createEmptySession(defaultModel);
+        setActiveSessionId(fallback.id);
+        return [fallback];
+      }
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(next[0].id);
+      }
+      return next;
+    });
+  }
+
+
+  async function refreshDevStatus() {
+    try {
+      const response = await fetch(`${apiBaseUrl}/dev/status`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+        },
+      });
+
+      const data = (await response.json()) as DevStatusResponse;
+      if (!response.ok) {
+        throw new Error(data?.error || `Status request failed (${response.status})`);
+      }
+
+      setDevStatus(data.controls || null);
+      setDevErrorText("");
+    } catch (error) {
+      setDevErrorText(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function handleDevControl(action: "start" | "stop") {
+    try {
+      setIsDevActionLoading(true);
+
+      const response = await fetch(`${apiBaseUrl}/dev/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+        },
+      });
+
+      const data = (await response.json()) as DevStatusResponse;
+      if (!response.ok) {
+        throw new Error(data?.error || `${action} request failed (${response.status})`);
+      }
+
+      setDevStatus(data.controls || null);
+      setDevErrorText("");
+    } catch (error) {
+      setDevErrorText(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDevActionLoading(false);
+    }
+  }
+
+  function updateActiveSessionField<K extends keyof Session>(field: K, value: Session[K]) {
+    if (!activeSession) return;
+    patchSession(activeSession.id, (session) => ({
+      ...session,
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  // Handle scroll events to detect if user is near bottom
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+    setShouldAutoScroll(isAtBottom);
+  };
+
+  // Smart auto-scroll effect
+  useEffect(() => {
+    if (shouldAutoScroll && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [activeSession?.messages, shouldAutoScroll]);
+
+  async function handleSend() {
+    if (!activeSession || !input.trim() || isSending) return;
+
+    const userText = input.trim();
+    const now = new Date().toISOString();
+    const userMessage: Message = {
+      id: uid("user"),
+      role: "user",
+      content: userText,
+      createdAt: now,
+      model: activeSession.model,
+      modelSelection: activeSession.modelSelection,
+      transport: activeSession.transport,
+    };
+
+    const assistantId = uid("assistant");
+    const assistantMessage: Message = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      createdAt: now,
+      model: activeSession.model,
+      modelSelection: activeSession.modelSelection,
+      transport: activeSession.transport,
+    };
+
+    patchSession(activeSession.id, (session) => ({
+      ...session,
+      title: session.messages.length === 0 ? formatTitle(userText) : session.title,
+      updatedAt: now,
+      messages: [...session.messages, userMessage, assistantMessage],
+    }));
+
+    setInput("");
+    setErrorText("");
+    setIsSending(true);
+    setShouldAutoScroll(true); // Always scroll on new user message
+
+    try {
+      const conversation = activeSession.messages
+        .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
+        .join("\n\n");
+
+      const prompt = conversation
+        ? `${conversation}\n\nUser: ${userText}\n\nAssistant:`
+        : userText;
+
+      const payload = {
+        message: prompt,
+        mode: activeSession.workflowMode,
+        model: activeSession.model,
+        modelSelection: activeSession.modelSelection,
+        useAutoModel: activeSession.modelSelection === "auto",
+      };
+
+      if (activeSession.transport === "stream") {
+        const response = await fetch(`${apiBaseUrl}/runs/stream`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok || !response.body) {
+          const text = await response.text();
+          throw new Error(text || `Stream request failed (${response.status})`);
+        }
+
+        const modelFromHeader = response.headers.get("x-evoflow-model") || activeSession.model;
+        const selectionFromHeader = (response.headers.get("x-evoflow-model-selection") as "auto" | "manual" | "default") || activeSession.modelSelection;
+
+        patchSession(activeSession.id, (session) => ({
+          ...session,
+          model: modelFromHeader,
+          modelSelection: selectionFromHeader === "default" ? "manual" : selectionFromHeader,
+        }));
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let full = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          full += chunk;
+
+          patchSession(activeSession.id, (session) => ({
+            ...session,
+            updatedAt: new Date().toISOString(),
+            messages: session.messages.map((message) =>
+              message.id === assistantId
+                ? {
+                    ...message,
+                    content: full,
+                    model: modelFromHeader,
+                    modelSelection: selectionFromHeader,
+                    transport: "stream",
+                  }
+                : message
+            ),
+          }));
+        }
+      } else {
+        const response = await fetch(`${apiBaseUrl}/runs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const text = await response.text();
+        if (!response.ok) throw new Error(text || `Request failed (${response.status})`);
+
+        let parsed: { finalOutput?: string; model?: string; modelSelection?: string } | null = null;
+        try {
+          parsed = JSON.parse(text) as { finalOutput?: string; model?: string; modelSelection?: string };
+        } catch {
+          parsed = { finalOutput: text };
+        }
+
+        const output = parsed?.finalOutput || text;
+        const model = parsed?.model || activeSession.model;
+        const selection = (parsed?.modelSelection as "auto" | "manual" | "default" | undefined) || activeSession.modelSelection;
+
+        patchSession(activeSession.id, (session) => ({
+          ...session,
+          model,
+          modelSelection: selection === "default" ? "manual" : selection,
+          updatedAt: new Date().toISOString(),
+          messages: session.messages.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: output,
+                  model,
+                  modelSelection: selection,
+                  transport: "normal",
+                }
+              : message
+          ),
+        }));
+      }
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      setErrorText(text);
+
+      patchSession(activeSession.id, (session) => ({
+        ...session,
+        updatedAt: new Date().toISOString(),
+        messages: session.messages.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content: `[error] ${text}`,
+              }
+            : message
+        ),
+      }));
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+
+  if (isLoadingModels) {
+    return (
+      <main style={{ width: "100%", padding: "0", margin: 0, color: ui.text, overflowX: "hidden" }}>
+        <h1 style={{ fontSize: 40, marginBottom: 12 }}>EvoFlow Chat</h1>
+        <div>Loading local Ollama models...</div>
+      </main>
+    );
+  }
+
+  return (
+    <main
+      style={{
+        width: "100%",
+        maxWidth: "none",
+        margin: 0,
+        padding: 8,
+        background: ui.pageBg, backdropFilter: "blur(6px)",
+        borderRadius: 32,
+        border: `1px solid ${ui.pageBorder}`,
+        color: ui.text,
+        boxShadow: isDark ? "0 30px 80px rgba(2, 6, 23, 0.55)" : "0 20px 48px rgba(15, 23, 42, 0.08)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
+        <div>
+          <h1 style={{ fontSize: 34, lineHeight: 1.0, letterSpacing: -0.9, margin: 0 }}>EvoFlow Chat</h1>
+          <div style={{ color: ui.muted, marginTop: 4, fontSize: 14, maxWidth: 680, lineHeight: 1.35 }}>
+            Stateful local chat mode with Ollama, sessions, streaming and model controls.
+          </div>
+          <div style={{ color: ui.subtle, marginTop: 2, fontSize: 11.5, maxWidth: 660, lineHeight: 1.3 }}>
+            V20: wider layout alignment plus Start/Avsluta controls for the managed background worker.
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "6px 10px", borderRadius: 14, background: isDark ? "rgba(7,17,31,0.58)" : "rgba(255,255,255,0.78)", border: `1px solid ${ui.panelBorder}`, backdropFilter: "blur(14px)", maxWidth: "100%" }}>
+          <button
+            type="button"
+            onClick={() => handleDevControl("start")}
+            disabled={isDevActionLoading}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 18,
+              border: `1px solid ${ui.controlBorder}`,
+              background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
+              color: "#ffffff",
+              cursor: isDevActionLoading ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {isDevActionLoading ? "Working..." : "Start"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDevControl("stop")}
+            disabled={isDevActionLoading}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 18,
+              border: `1px solid ${ui.controlBorder}`,
+              background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d",
+              color: "#ffffff",
+              cursor: isDevActionLoading ? "not-allowed" : "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {isDevActionLoading ? "Working..." : "Avsluta"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportChats}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 18,
+              border: `1px solid ${ui.controlBorder}`,
+              background: ui.actionBg,
+              color: ui.actionText,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Export chats
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 18,
+              border: `1px solid ${ui.controlBorder}`,
+              background: ui.actionBg,
+              color: ui.actionText,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Import chats
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAgentViewEnabled((prev) => !prev)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 18,
+              border: `1px solid ${ui.controlBorder}`,
+              background: agentViewEnabled ? (isDark ? "#1d4ed8" : "#eff6ff") : ui.actionBg,
+              color: agentViewEnabled ? (isDark ? "#dbeafe" : "#1d4ed8") : ui.actionText,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {agentViewEnabled ? "Agent view on" : "Agent view off"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 14,
+              border: `1px solid ${ui.controlBorder}`,
+              background: ui.actionBg,
+              color: ui.actionText,
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            {isDark ? "Light mode" : "Dark mode"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCreateSession}
+            style={{
+              padding: "9px 13px",
+              borderRadius: 14,
+              border: "1px solid rgba(96,165,250,0.24)",
+              background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%)",
+                      boxShadow: isDark ? "0 12px 28px rgba(37,99,235,0.42)" : "0 10px 22px rgba(37,99,235,0.20)",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            New chat
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) await handleImportFile(file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+            fontSize: 12,
+            color: ui.subtle,
+            width: "100%",
+          }}
+        >
+          {[
+            devStatus?.api ? { key: "api", item: devStatus.api } : null,
+            devStatus?.web ? { key: "web", item: devStatus.web } : null,
+            devStatus?.executor ? { key: "executor", item: devStatus.executor } : null,
+          ]
+            .filter(Boolean)
+            .map((entry) => {
+              const item = entry!.item;
+              return (
+                <div
+                  key={entry!.key}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${item?.running ? "rgba(34,197,94,0.35)" : ui.controlBorder}`,
+                    background: item?.running ? (isDark ? "rgba(22,163,74,0.12)" : "#f0fdf4") : ui.actionBg,
+                    color: item?.running ? (isDark ? "#86efac" : "#166534") : ui.subtle,
+                    fontWeight: 700,
+                  }}
+                  title={
+                    entry!.key === "executor"
+                      ? `Managed process. ${item?.pid ? `PID ${item.pid}. ` : ""}${item?.command || ""}${item?.cwd ? ` in ${item.cwd}` : ""}`
+                      : entry!.key === "web"
+                        ? "Detected from the local web port."
+                        : "This API is running because this page can reach it."
+                  }
+                >
+                  {item?.label}: {item?.running ? "running" : "stopped"}
+                </div>
+              );
+            })}
+
+          <div style={{ color: ui.subtle }}>
+            Start/Avsluta controls the managed background worker. Web/API status is shown read-only so the UI stays available.
+          </div>
+        </div>
+      </div>
+
+      {devErrorText ? (
+        <div
+          style={{
+            marginBottom: 10,
+            padding: "9px 10px",
+            borderRadius: 18,
+            border: "1px solid rgba(248, 113, 113, 0.35)",
+            background: isDark ? "rgba(127, 29, 29, 0.18)" : "#fff1f2",
+            color: isDark ? "#fecaca" : "#991b1b",
+            fontSize: 13,
+          }}
+        >
+          {devErrorText}
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "210px minmax(0, 1fr)",
+          gap: 14,
+          minHeight: "84vh",
+          alignItems: "stretch",
+          padding: "4px 12px",
+          background: ui.pageBg, backdropFilter: "blur(6px)",
+          borderRadius: 14,
+          border: `1px solid ${ui.pageBorder}`,
+          boxShadow: isDark ? "0 20px 50px rgba(2, 6, 23, 0.42)" : "0 20px 48px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        <aside
+          style={{
+            border: `1px solid ${ui.panelBorder}`,
+            borderRadius: 24,
+            background: ui.panelBg,
+            padding: 14,
+            boxShadow: isDark ? "0 18px 46px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
+            overflow: "hidden",
+            backdropFilter: "blur(14px)",
+          }}
+        >
+          <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
+            Sessions
+          </div>
+          <div style={{ fontSize: 12, color: ui.subtle, marginBottom: 8, lineHeight: 1.35 }}>
+            Local sessions stay on this device. Import safely merges chat backups.
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                style={{
+                  border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid ${ui.panelBorder}`,
+                  borderRadius: 16,
+                  padding: 6,
+                  cursor: "pointer",
+                  position: "relative",
+                  transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
+                  background: activeSessionId === session.id ? (isDark ? "linear-gradient(180deg, rgba(10,18,34,0.98) 0%, rgba(21,34,58,0.98) 100%)" : "#f8fafc") : ui.controlBg,
+                  boxShadow: activeSessionId === session.id ? (isDark ? "0 12px 30px rgba(37,99,235,0.24)" : "0 10px 20px rgba(15,23,42,0.06)") : "none",
+                  transform: activeSessionId === session.id ? "translateY(-1px) scale(1.01)" : "none",
+                }}
+              >
+                {editingSessionId === session.id ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <input
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveRename(session.id);
+                        if (e.key === "Escape") cancelRenameSession();
+                      }}
+                      autoFocus
+                      style={{
+                        width: "100%",
+                        padding: "9px 10px",
+                        borderRadius: 14,
+                        border: `1px solid ${ui.controlBorder}`,
+                        background: ui.controlBg,
+                        color: ui.text,
+                        boxSizing: "border-box",
+                      }}
+                    />
+
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRename(session.id)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 14,
+                          border: `1px solid ${ui.controlBorder}`,
+                          background: ui.actionBg,
+                          color: ui.actionText,
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Save
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={cancelRenameSession}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 14,
+                          border: `1px solid ${ui.controlBorder}`,
+                          background: ui.actionBg,
+                          color: ui.actionText,
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveSessionId(session.id)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        color: ui.text,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>{session.title}</div>
+                      <div style={{ fontSize: 12, color: ui.subtle, lineHeight: 1.6 }}>
+                        {session.messages.length} messages
+                        <br />
+                        {session.modelSelection} · {session.transport}
+                      </div>
+                    </button>
+
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => startRenameSession(session.id, session.title)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 14,
+                          border: `1px solid ${ui.controlBorder}`,
+                          background: ui.actionBg,
+                          color: ui.actionText,
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Rename
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSession(session.id)}
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 14,
+                          border: `1px solid ${ui.controlBorder}`,
+                          background: ui.actionBg,
+                          color: ui.actionText,
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <section
+          style={{
+            border: `1px solid ${ui.panelBorder}`,
+            borderRadius: 20,
+            background: ui.panelBg,
+            padding: 14,
+            boxShadow: isDark ? "0 18px 40px rgba(2, 6, 23, 0.35)" : "0 18px 40px rgba(15, 23, 42, 0.08)",
+            display: "grid",
+            gridTemplateRows: "auto 1fr auto",
+            gap: 16,
+            minHeight: "75vh",
+          }}
+        >
+          {activeSession ? (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%" }}>
+                <div>
+                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Mode</label>
+                  <select
+                    value={activeSession.workflowMode}
+                    onChange={(e) => updateActiveSessionField("workflowMode", e.target.value as "direct" | "multi-step")}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                  >
+                    <option value="direct">Direct</option>
+                    <option value="multi-step">Multi-step</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Model selection</label>
+                  <select
+                    value={activeSession.modelSelection}
+                    onChange={(e) => updateActiveSessionField("modelSelection", e.target.value as "auto" | "manual")}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Model</label>
+                  <select
+                    value={activeSession.model}
+                    onChange={(e) => updateActiveSessionField("model", e.target.value)}
+                    disabled={activeSession.modelSelection === "auto"}
+                    style={{
+                      width: "100%",
+                      padding: "9px 10px",
+                      borderRadius: 18,
+                      border: `1px solid ${ui.controlBorder}`,
+                      background: activeSession.modelSelection === "auto" ? (isDark ? "#172033" : "#f2f4f7") : ui.controlBg,
+                      color: ui.text,
+                    }}
+                  >
+                    {models.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Response mode</label>
+                  <select
+                    value={activeSession.transport}
+                    onChange={(e) => updateActiveSessionField("transport", e.target.value as "normal" | "stream")}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 14, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text }}
+                  >
+                    <option value="stream">Streaming</option>
+                    <option value="normal">Normal</option>
+                  </select>
+                </div>
+              </div>
+
+              <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                style={{
+                  border: `1px solid ${ui.panelBorder}`,
+                  borderRadius: 22,
+                  padding: "8px 8px 100px 8px", // Added large bottom padding for sticky bar
+                  background: ui.chatCanvas,
+                  overflowY: "auto",
+                  minHeight: 660,
+                  maxHeight: "calc(100vh - 190px)",
+                  overflowX: "hidden",
+                  boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
+                  scrollBehavior: "smooth",
+                }}
+              >
+                {activeSession.messages.length === 0 ? (
+                  <div style={{ color: ui.subtle, maxWidth: 720, lineHeight: 1.8, padding: 8 }}>
+                    Start the conversation. Example:
+                    <br />
+                    <br />
+                    <strong>Direct:</strong> Respond with exactly one word: KIWI
+                    <br />
+                    <strong>Multi-step:</strong> Write a short haiku about rain.
+                    <br />
+                    <strong>Agent view:</strong> Frontend now recognizes labels like <code>[planner]</code> and <code>[executor]</code> if your backend starts returning them later.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {activeSession.messages.map((message) => {
+                      const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
+
+                      return (
+                        <div
+                          key={message.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: message.role === "user" ? "flex-end" : "flex-start",
+                          }}
+                        >
+                          <div
+                            style={{
+                              maxWidth: "76%",
+                              padding: 14,
+                              borderRadius: 16,
+                              background: message.role === "user" ? ui.userBubble : ui.assistantBubble,
+                              color: message.role === "user" ? "#fff" : ui.text,
+                              border: message.role === "user" ? `1px solid ${ui.userBubble}` : `1px solid ${ui.assistantBorder}`,
+                              boxShadow: isDark ? "0 16px 34px rgba(2, 6, 23, 0.36)" : "0 10px 24px rgba(15, 23, 42, 0.06)",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <div style={{ fontSize: 11, opacity: 0.82, fontWeight: 700 }}>
+                                  {message.role === "user" ? "You" : "EvoFlow AI"}
+                                </div>
+
+                                {message.role === "assistant" && agentViewEnabled && agent ? (
+                                  <span
+                                    style={{
+                                      padding: "5px 9px",
+                                      borderRadius: 999,
+                                      fontSize: 10.5,
+                                      fontWeight: 800,
+                                      letterSpacing: 0.2,
+                                      background: isDark ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.06)",
+                                      color: agent.accent,
+                                      border: `1px solid ${agent.accent}22`,
+                                    }}
+                                  >
+                                    {agent.label}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {message.role === "assistant" && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyWholeMessage(message.content)}
+                                  style={{
+                                    padding: "5px 9px",
+                                    borderRadius: 9,
+                                    border: `1px solid ${ui.controlBorder}`,
+                                    background: ui.actionBg,
+                                    color: ui.actionText,
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    transition: "transform 120ms ease, box-shadow 120ms ease",
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              )}
+                            </div>
+
+                            <RichMessageContent
+                              content={message.content}
+                              isStreaming={isSending && message.role === "assistant" && message.id === activeSession.messages[activeSession.messages.length - 1]?.id}
+                            />
+
+                            <div style={{ fontSize: 11, opacity: 0.72, marginTop: 10 }}>
+                              {message.model ? `${message.model} · ` : ""}{message.transport || activeSession.transport}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  position: "sticky",
+                  bottom: 0,
+                  marginTop: -90, // Pull up to overlap with the padding
+                  padding: "40px 10px 10px 10px",
+                  background: isDark
+                    ? "linear-gradient(180deg, rgba(10,18,34,0) 0%, rgba(10,18,34,0.92) 40%, rgba(10,18,34,1) 100%)"
+                    : "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.94) 40%, rgba(255,255,255,1) 100%)",
+                  backdropFilter: "blur(8px)",
+                  zIndex: 10,
+                }}
+              >
+                {errorText ? (
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      padding: 10,
+                      border: "1px solid #f5c2c7",
+                      borderRadius: 18,
+                      background: "#fff5f5",
+                      color: "#b42318",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {errorText}
+                  </div>
+                ) : null}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end", padding: "10px 14px", borderRadius: 20, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(15,23,42,0.95)" : "#ffffff", boxShadow: isDark ? "0 10px 40px rgba(0,0,0,0.4)" : "0 10px 30px rgba(15,23,42,0.08)" }}>
+                  <div>
+                    <label style={{ display: "block", marginBottom: 4, fontWeight: 700, color: ui.text }}>Message</label>
+                    <textarea
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="Write your next message here..."
+                      style={{
+                        width: "100%",
+                        minHeight: 68,
+                        padding: 12,
+                        borderRadius: 18,
+                        border: `1px solid ${ui.controlBorder}`,
+                        fontSize: 15,
+                        boxSizing: "border-box",
+                        resize: "vertical",
+                        boxShadow: isDark ? "inset 0 1px 0 rgba(255,255,255,0.03)" : "none",
+                        lineHeight: 1.6,
+                        background: ui.controlBg,
+                        color: ui.text,
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!input.trim() || isSending}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(96,165,250,0.28)",
+                      background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 52%, #1d4ed8 100%)",
+                      boxShadow: isDark ? "0 12px 28px rgba(37,99,235,0.42)" : "0 10px 22px rgba(37,99,235,0.20)",
+                      color: "#fff",
+                      cursor: !input.trim() || isSending ? "not-allowed" : "pointer",
+                      fontWeight: 700,
+                      minWidth: 116,
+                      height: 44,
+                    }}
+                  >
+                    {isSending ? "Sending..." : "Send"}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </section>
+      </div>
+    </main>
+  );
+}
