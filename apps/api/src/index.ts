@@ -244,45 +244,59 @@ async function resolveRequestedModel(
   requestedModel: string | undefined,
   useAutoModel: boolean,
   message: string,
-  mode: string
-): Promise<{ selectedModel: string; selectionMode: "manual" | "auto" | "default" }> {
+  mode: string,
+  sessionId?: string
+): Promise<{ selectedModel: string; selectionMode: "manual" | "auto" | "default"; context?: string; images?: string[] }> {
   const installed = await getInstalledOllamaModels();
   const wanted = String(requestedModel ?? "").trim();
 
+  let context = "";
+  let images: string[] = [];
+
+  if (sessionId) {
+     const docs = await prisma.chatDocument.findMany({ where: { sessionId } });
+     for (const doc of docs) {
+       const type = (doc.type || "").toLowerCase();
+       if (type.includes("pdf") || type === "txt" || type === "ts" || type.includes("text")) {
+         context += `\n[Context from ${doc.name}]:\n${doc.content}\n`;
+       } else if (type.includes("png") || type.includes("jpg") || type.includes("jpeg") || type.includes("webp") || type.includes("image")) {
+         images.push(doc.content);
+       }
+     }
+  }
+
   if (wanted && installed.includes(wanted) && !useAutoModel) {
-    return { selectedModel: wanted, selectionMode: "manual" };
+    return { selectedModel: wanted, selectionMode: "manual", context, images };
   }
 
-  if (useAutoModel) {
-    return {
-      selectedModel: choosePreferredModel(installed, message, mode),
-      selectionMode: "auto",
-    };
-  }
+  const selectedModel = useAutoModel 
+    ? choosePreferredModel(installed, message, mode)
+    : (installed.includes(DEFAULT_OLLAMA_MODEL) ? DEFAULT_OLLAMA_MODEL : installed[0] || "");
 
-  if (installed.includes(DEFAULT_OLLAMA_MODEL)) {
-    return { selectedModel: DEFAULT_OLLAMA_MODEL, selectionMode: "default" };
-  }
-
-  if (installed.length > 0) {
-    return { selectedModel: installed[0], selectionMode: "default" };
-  }
-
-  throw new Error("No Ollama models were found. Install a model first with e.g. `ollama pull llama3`.");
+  return { 
+    selectedModel, 
+    selectionMode: useAutoModel ? "auto" : "manual",
+    context,
+    images
+  };
 }
 
-async function callOllama(prompt: string, model: string, system?: string): Promise<string> {
+async function callOllama(prompt: string, model: string, system?: string, images?: string[]): Promise<string> {
+  const payload: any = {
+    model,
+    prompt,
+    system,
+    stream: false,
+  };
+  if (images && images.length > 0) {
+    payload.images = images;
+  }
   const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      prompt,
-      system,
-      stream: false,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -298,19 +312,24 @@ async function streamOllama(
   prompt: string,
   model: string,
   system: string | undefined,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  images?: string[]
 ): Promise<string> {
+  const payload: any = {
+    model,
+    prompt,
+    system,
+    stream: true,
+  };
+  if (images && images.length > 0) {
+    payload.images = images;
+  }
   const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      prompt,
-      system,
-      stream: true,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -501,10 +520,11 @@ async function streamAgentOutput(
 
   try {
     const streamed = await streamOllama(
-      message,
+      finalPrompt,
       model,
       "You are an assistant inside a local workflow engine. Answer clearly and stay on topic.",
-      onChunk
+      onChunk,
+      images
     );
 
     if (streamed) {
@@ -790,6 +810,50 @@ app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, 
   }
 });
 
+app.post(["/sessions/:id/chat", "/api/sessions/:id/chat"], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message, model, transport, workflowMode } = req.body;
+
+    const { selectedModel, context, images } = await resolveRequestedModel(
+      model,
+      false, // forced manual
+      message,
+      workflowMode || "multi-step",
+      id
+    );
+
+    const fullPrompt = context ? `${context}\n\nUser Question: ${message}` : message;
+
+    if (transport === "stream") {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("x-evoflow-model", selectedModel);
+
+      await streamOllama(
+        fullPrompt,
+        selectedModel,
+        "You are an assistant comparing responses. Be brief and objective.",
+        (chunk) => res.write(chunk),
+        images
+      );
+      res.end();
+    } else {
+      const output = await callOllama(
+        fullPrompt,
+        selectedModel,
+        "You are an assistant comparing responses. Be brief and objective.",
+        images
+      );
+      res.json({ success: true, finalOutput: output, model: selectedModel });
+    }
+  } catch (error) {
+    console.error("[apps/api] Comparison chat failed:", error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
@@ -815,6 +879,11 @@ app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth
         console.error("[apps/api] PDF processing failed:", pdfErr);
         throw new Error(`PDF extraction failed: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`);
       }
+    } else if (mimetype.startsWith("image/")) {
+      console.log(`[apps/api] Image detected (${mimetype}). Converting to base64...`);
+      const dataBuffer = fs.readFileSync(filePath);
+      content = dataBuffer.toString("base64");
+      console.log(`[apps/api] Image converted. Length: ${content.length}`);
     } else {
       content = fs.readFileSync(filePath, "utf-8");
       console.log(`[apps/api] Text/TS extraction successful. Read ${content.length} characters.`);
@@ -862,6 +931,19 @@ app.delete(["/sessions/:id/documents/:docId", "/api/sessions/:id/documents/:docI
       where: { id: docId },
     });
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.get(["/documents/:id", "/api/documents/:id"], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const doc = await prisma.chatDocument.findUnique({
+      where: { id },
+    });
+    if (!doc) return res.status(404).json({ success: false, error: "Document not found" });
+    res.json({ success: true, item: doc });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }
