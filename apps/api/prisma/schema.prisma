@@ -3,33 +3,20 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-enum Role {
-  admin
-  operator
-  viewer
-}
-
-enum RunStatus {
-  queued
-  running
-  completed
-  failed
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid())
   email     String   @unique
-  role      Role     @default(viewer)
+  role      String   @default("viewer")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Workflow {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String   @id @default(uuid())
   name        String
   description String?
   runs        Run[]
@@ -38,16 +25,55 @@ model Workflow {
 }
 
 model Run {
-  id         String    @id @default(uuid()) @db.Uuid
-  workflowId String    @db.Uuid
-  workflow   Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  status     RunStatus @default(queued)
-  payload    Json?
-  result     Json?
+  id         String   @id @default(uuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  status     String   @default("queued")
+  payload    String? // SQLite stores JSON as string/text
+  result     String?
   error      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([workflowId])
   @@index([status])
+}
+
+model ChatSession {
+  id             String         @id @default(uuid())
+  title          String
+  workflowMode   String         @default("multi-step")
+  model          String
+  modelSelection String         @default("auto")
+  transport      String         @default("stream")
+  messages       ChatMessage[]
+  documents      ChatDocument[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model ChatMessage {
+  id             String      @id @default(uuid())
+  sessionId      String
+  session        ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role           String // "user" or "assistant"
+  content        String
+  model          String?
+  modelSelection String?
+  transport      String?
+  createdAt      DateTime    @default(now())
+
+  @@index([sessionId])
+}
+
+model ChatDocument {
+  id        String      @id @default(uuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  name      String
+  type      String // "pdf", "txt", "md", etc.
+  content   String // Extracted text content
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId])
 }

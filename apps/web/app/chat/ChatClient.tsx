@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Message = {
   id: string;
@@ -24,6 +25,14 @@ type Session = {
   modelSelection: "auto" | "manual";
   transport: "normal" | "stream";
   messages: Message[];
+  documents: ChatDocument[];
+};
+
+type ChatDocument = {
+  id: string;
+  name: string;
+  type: string;
+  createdAt: string;
 };
 
 type ModelsResponse = {
@@ -79,6 +88,7 @@ function createEmptySession(defaultModel: string): Session {
     modelSelection: "auto",
     transport: "stream",
     messages: [],
+    documents: [],
   };
 }
 
@@ -190,10 +200,11 @@ function normalizeImportedSessions(payload: unknown, defaultModel: string): Sess
       createdAt: typeof raw.createdAt === "string" ? raw.createdAt : now,
       updatedAt: now,
       workflowMode: raw.workflowMode === "direct" ? "direct" : "multi-step",
-      model: typeof raw.model === "string" && raw.model ? raw.model : defaultModel,
+      model: raw.model || defaultModel,
       modelSelection: raw.modelSelection === "manual" ? "manual" : "auto",
       transport: raw.transport === "normal" ? "normal" : "stream",
       messages,
+      documents: Array.isArray(raw.documents) ? raw.documents : [],
     }];
   });
 }
@@ -397,6 +408,7 @@ export default function ChatClient() {
   const [agentViewEnabled, setAgentViewEnabled] = useState(true);
   const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
   const [isDevActionLoading, setIsDevActionLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [devErrorText, setDevErrorText] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -433,13 +445,40 @@ export default function ChatClient() {
       setModels(result.models);
       setDefaultModel(result.defaultModel);
 
-      const loaded = loadSessions(result.defaultModel);
-      const normalized = loaded.map((session) => ({
-        ...session,
-        model: session.model || result.defaultModel,
-      }));
-      setSessions(normalized);
-      setActiveSessionId(normalized[0]?.id || "");
+      // 1. Fetch from server
+      let serverSessions: Session[] = [];
+      try {
+        const resp = await fetch(`${apiBaseUrl}/api/sessions`);
+        const data = await resp.json();
+        if (data.success && Array.isArray(data.items)) {
+          serverSessions = data.items.map((s: any) => ({
+             ...s,
+             messages: s.messages || [],
+             documents: s.documents || []
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to fetch server sessions", e);
+      }
+
+      // 2. Synchronization logic
+      const localSessions = loadSessions(result.defaultModel);
+      
+      if (serverSessions.length > 0) {
+        // If server has data, use it as the source of truth
+        setSessions(serverSessions);
+        setActiveSessionId(serverSessions[0].id);
+      } else if (localSessions.length > 0 && localSessions[0].title !== "New chat") {
+        // Only migrate if server is empty but local has meaningful data
+        console.log("Migrating local sessions to server...");
+        setSessions(localSessions);
+        setActiveSessionId(localSessions[0].id);
+      } else {
+        // Fallback to empty state
+        setSessions(serverSessions.length > 0 ? serverSessions : (localSessions.length > 0 ? localSessions : [createEmptySession(result.defaultModel)]));
+        setActiveSessionId(serverSessions[0]?.id || localSessions[0]?.id || "");
+      }
+      
       setIsLoadingModels(false);
     })();
 
@@ -448,9 +487,10 @@ export default function ChatClient() {
     };
   }, [apiBaseUrl, demoToken]);
 
-  useEffect(() => {
-    if (sessions.length > 0) saveSessions(sessions);
-  }, [sessions]);
+  // Disable automatic localStorage saving as we move to SQL
+  // useEffect(() => {
+  //   if (sessions.length > 0) saveSessions(sessions);
+  // }, [sessions]);
 
   useEffect(() => {
     refreshDevStatus();
@@ -482,7 +522,7 @@ export default function ChatClient() {
     setEditingTitle("");
   }
 
-  function handleSaveRename(sessionId: string) {
+  async function handleSaveRename(sessionId: string) {
     const nextTitle = formatTitle(editingTitle);
     patchSession(sessionId, (session) => ({
       ...session,
@@ -490,6 +530,16 @@ export default function ChatClient() {
       updatedAt: new Date().toISOString(),
     }));
     cancelRenameSession();
+
+    try {
+      await fetch(`${apiBaseUrl}/api/sessions/${sessionId}/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: nextTitle }),
+      });
+    } catch (e) {
+      console.error("Failed to sync rename to server", e);
+    }
   }
 
   function handleExportChats() {
@@ -535,22 +585,101 @@ export default function ChatClient() {
     }
   }
 
-  function handleCreateSession() {
-    const next = createEmptySession(defaultModel);
-    setSessions((prev) => [next, ...prev]);
-    setActiveSessionId(next.id);
-    setInput("");
-    setErrorText("");
+  const docInputRef = useRef<HTMLInputElement|null>(null);
+
+  async function handleDocumentUpload(file: File) {
+    if (!activeSession) return;
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setIsUploading(true);
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/documents`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await resp.json();
+      if (data.success && data.document) {
+        patchSession(activeSession.id, (s) => ({
+          ...s,
+          documents: [...(s.documents || []), data.document],
+        }));
+      }
+    } catch (e) {
+      console.error("Document upload failed", e);
+    } finally {
+      setIsUploading(false);
+    }
   }
 
-  function handleDeleteSession(sessionId: string) {
+  async function handleDeleteDocument(docId: string) {
+    if (!activeSession) return;
+    if (!window.confirm("Remove this document from the session?")) return;
+
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/documents/${docId}`, {
+        method: "DELETE",
+      });
+      const data = await resp.json();
+      if (data.success) {
+        patchSession(activeSession.id, (s) => ({
+          ...s,
+          documents: (s.documents || []).filter(d => d.id !== docId),
+        }));
+      }
+    } catch (e) {
+      console.error("Document deletion failed", e);
+    }
+  }
+
+  async function handleCreateSession() {
+    const fresh = createEmptySession(defaultModel);
+    // Optimistic UI
+    setSessions((prev) => [fresh, ...prev]);
+    setActiveSessionId(fresh.id);
+    setInput("");
+    setErrorText("");
+
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: fresh.title,
+          model: fresh.model,
+          transport: fresh.transport,
+          workflowMode: fresh.workflowMode,
+        }),
+      });
+      const data = await resp.json();
+      if (data.success && data.session) {
+        // Update the optimistic ID with the server ID
+        setSessions((prev) => prev.map(s => s.id === fresh.id ? { ...s, id: data.session.id } : s));
+        setActiveSessionId(data.session.id);
+      }
+    } catch (e) {
+      console.error("Failed to create session on server", e);
+    }
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    if (!window.confirm("Delete this session?")) return;
+    
     if (editingSessionId === sessionId) {
       cancelRenameSession();
+    }
+
+    // Try API first or optimistic
+    try {
+      await fetch(`${apiBaseUrl}/api/sessions/${sessionId}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("Failed to delete session on server", e);
     }
 
     setSessions((prev) => {
       const next = prev.filter((session) => session.id !== sessionId);
       if (next.length === 0) {
+        // We'll let the user create a new one or auto-create
         const fallback = createEmptySession(defaultModel);
         setActiveSessionId(fallback.id);
         return [fallback];
@@ -673,6 +802,19 @@ export default function ChatClient() {
     setIsSending(true);
     setShouldAutoScroll(true); // Always scroll on new user message
 
+    // Sync User Message to DB
+    fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        role: "user",
+        content: userText,
+        model: userMessage.model,
+        transport: userMessage.transport,
+        modelSelection: userMessage.modelSelection,
+      }),
+    }).catch(e => console.error("Failed to sync user message", e));
+
     try {
       const conversation = activeSession.messages
         .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
@@ -687,7 +829,7 @@ export default function ChatClient() {
         mode: activeSession.workflowMode,
         model: activeSession.model,
         modelSelection: activeSession.modelSelection,
-        useAutoModel: activeSession.modelSelection === "auto",
+        sessionId: activeSession.id,
       };
 
       if (activeSession.transport === "stream") {
@@ -740,6 +882,19 @@ export default function ChatClient() {
             ),
           }));
         }
+
+        // Sync Assistant Message to DB (Streaming complete)
+        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "assistant",
+            content: full,
+            model: modelFromHeader,
+            transport: "stream",
+            modelSelection: selectionFromHeader,
+          }),
+        }).catch(e => console.error("Failed to sync assistant message", e));
       } else {
         const response = await fetch(`${apiBaseUrl}/runs`, {
           method: "POST",
@@ -781,6 +936,19 @@ export default function ChatClient() {
               : message
           ),
         }));
+
+        // Sync Assistant Message to DB (Normal complete)
+        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            role: "assistant",
+            content: output,
+            model,
+            transport: "normal",
+            modelSelection: selection,
+          }),
+        }).catch(e => console.error("Failed to sync assistant message", e));
       }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
@@ -1031,6 +1199,92 @@ export default function ChatClient() {
             Start/Avsluta controls the managed background worker. Web/API status is shown read-only so the UI stays available.
           </div>
         </div>
+
+        {/* --- DOCUMENTS SECTION --- */}
+        {activeSession && (
+          <div style={{ marginTop: 24, borderTop: `1px solid ${ui.panelBorder}`, paddingTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, letterSpacing: 1, textTransform: "uppercase" }}>Attached Documents</span>
+                <span style={{ 
+                  fontSize: 10, 
+                  fontWeight: 800, 
+                  background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", 
+                  padding: "1px 6px", 
+                  borderRadius: 6,
+                  color: ui.accent 
+                }}>
+                  {activeSession.documents?.length || 0}
+                </span>
+              </div>
+              <button 
+                onClick={() => docInputRef.current?.click()}
+                style={{ fontSize: 10, fontWeight: 700, background: "transparent", border: "none", color: ui.accent, cursor: "pointer" }}
+              >
+                + Add File
+              </button>
+              <input 
+                ref={docInputRef}
+                type="file"
+                accept=".pdf,.txt,.md"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleDocumentUpload(file);
+                }}
+              />
+            </div>
+
+            <div style={{ display: "grid", gap: 6 }}>
+              {isUploading && (
+                <div style={{ padding: "6px 10px", fontSize: 12, color: ui.accent, fontStyle: "italic" }}>
+                  Uploading document...
+                </div>
+              )}
+              {activeSession.documents && activeSession.documents.length > 0 ? (
+                activeSession.documents.map((doc) => (
+                  <div 
+                    key={doc.id}
+                    style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 8, 
+                      padding: "6px 10px", 
+                      borderRadius: 8, 
+                      background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.02)",
+                      border: `1px solid ${ui.panelBorder}`,
+                      fontSize: 12
+                    }}
+                  >
+                    <span style={{ opacity: 0.6 }}>📄</span>
+                    <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
+                    <span style={{ fontSize: 9, opacity: 0.5, textTransform: "uppercase" }}>{doc.type}</span>
+                  </div>
+                ))
+              ) : (
+                <div 
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleDocumentUpload(file);
+                  }}
+                  style={{ 
+                    border: `1px dashed ${ui.panelBorder}`, 
+                    borderRadius: 12, 
+                    padding: "20px 10px", 
+                    textAlign: "center", 
+                    fontSize: 12, 
+                    color: ui.subtle,
+                    background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"
+                  }}
+                >
+                  Drag & drop PDF/TXT files here to chat with them.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
 
@@ -1082,9 +1336,15 @@ export default function ChatClient() {
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6, paddingRight: 4 }}>
-            {sessions.map((session) => (
-              <div
-                key={session.id}
+            <AnimatePresence initial={false}>
+              {sessions.map((session) => (
+                <motion.div
+                  key={session.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  layout
                 style={{
                   border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid rgba(255,255,255,0.03)`,
                   borderRadius: 12,
@@ -1169,9 +1429,14 @@ export default function ChatClient() {
                       }}
                     >
                       <div style={{ fontWeight: 700, marginBottom: 2, fontSize: 13, lineHeight: 1.2 }}>{session.title}</div>
-                      <div style={{ fontSize: 11, color: ui.subtle, lineHeight: 1.3 }}>
-                        {session.messages.length} messages · {session.modelSelection} · {session.transport}
-                      </div>
+                        <div style={{ fontSize: 10, color: ui.muted, marginTop: 4 }}>
+                          {(session.messages || []).length} messages · {session.modelSelection} · {session.transport}
+                          {session.documents && (session.documents.length || 0) > 0 && (
+                            <span style={{ marginLeft: 6, color: ui.accent, fontWeight: 700 }}>
+                              📎 {session.documents.length}
+                            </span>
+                          )}
+                        </div>
                     </button>
 
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
@@ -1211,8 +1476,9 @@ export default function ChatClient() {
                     </div>
                   </>
                 )}
-              </div>
-            ))}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </aside>
 
@@ -1320,14 +1586,18 @@ export default function ChatClient() {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 6 }}>
-                    {activeSession.messages.map((message, idx) => {
+                    <AnimatePresence initial={false}>
+                      {activeSession.messages.map((message, idx) => {
                       const isFirstInGroup = idx === 0 || activeSession.messages[idx - 1].role !== message.role;
                       const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
                       const isStreaming = isSending && message.role === "assistant" && idx === activeSession.messages.length - 1;
 
                       return (
-                        <div
+                        <motion.div
                           key={message.id}
+                          initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
                           style={{
                             display: "flex",
                             justifyContent: message.role === "user" ? "flex-end" : "flex-start",
@@ -1392,7 +1662,12 @@ export default function ChatClient() {
                               </div>
                             )}
 
-                            <RichMessageContent
+                                {message.role === "assistant" && activeSession.documents && activeSession.documents.length > 0 && (
+                                  <div style={{ fontSize: 10, color: ui.accent, fontWeight: 700, marginBottom: 4 }}>
+                                    📎 Using Document Context
+                                  </div>
+                                )}
+                                <RichMessageContent
                               content={message.content}
                               isStreaming={isStreaming}
                             />
@@ -1437,11 +1712,12 @@ export default function ChatClient() {
                               )}
                             </div>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
-                  </div>
-                )}
+                  </AnimatePresence>
+                </div>
+              )}
               </div>
 
               <div
@@ -1455,6 +1731,51 @@ export default function ChatClient() {
                   zIndex: 10,
                 }}
               >
+                {/* --- ATTACHMENT CHIPS UI --- */}
+                {activeSession && activeSession.documents && activeSession.documents.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, padding: "0 4px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: ui.accent, textTransform: "uppercase", letterSpacing: 0.5, flexBasis: "100%", marginBottom: 4 }}>
+                      Active Context ({activeSession.documents.length})
+                    </div>
+                    {activeSession.documents.map((doc) => (
+                      <div 
+                        key={doc.id}
+                        style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: 6, 
+                          padding: "4px 10px", 
+                          borderRadius: 8, 
+                          background: isDark ? "rgba(96,165,250,0.12)" : "rgba(37,99,235,0.05)",
+                          border: `1px solid ${isDark ? "rgba(96,165,250,0.2)" : "rgba(37,99,235,0.1)"}`,
+                          fontSize: 12,
+                          color: isDark ? "#93c5fd" : "#1d4ed8"
+                        }}
+                      >
+                        <span style={{ opacity: 0.7 }}>📄</span>
+                        <span style={{ fontWeight: 600 }}>{doc.name}</span>
+                        <button 
+                          onClick={() => handleDeleteDocument(doc.id)}
+                          style={{ 
+                            background: "transparent", 
+                            border: "none", 
+                            color: "inherit", 
+                            cursor: "pointer", 
+                            fontSize: 14, 
+                            fontWeight: 800, 
+                            padding: "0 2px",
+                            marginLeft: 4,
+                            lineHeight: 1,
+                            opacity: 0.6
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {errorText ? (
                   <div
                     style={{

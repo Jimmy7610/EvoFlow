@@ -4,6 +4,13 @@ import cors from "cors";
 import path from "path";
 import { existsSync } from "fs";
 import { spawn, ChildProcess } from "child_process";
+import { PrismaClient } from "@prisma/client";
+import multer from "multer";
+const pdf = require("pdf-parse");
+import fs from "fs";
+
+const prisma = new PrismaClient();
+const upload = multer({ dest: "uploads/" });
 
 type Workflow = {
   id: string;
@@ -673,8 +680,191 @@ app.get("/", (_req, res) => {
       "POST /api/runs",
       "POST /runs/stream",
       "POST /api/runs/stream",
+      "GET /sessions",
+      "GET /api/sessions",
+      "GET /sessions/:id",
+      "GET /api/sessions/:id",
+      "POST /sessions",
+      "POST /api/sessions",
+      "PATCH /sessions/:id",
+      "POST /api/sessions/:id/rename",
+      "DELETE /sessions/:id",
+      "POST /api/sessions/:id/messages",
     ],
   });
+});
+
+// --- CHAT PERSISTENCE ROUTES ---
+
+app.get(["/sessions", "/api/sessions"], requireAuth, async (_req, res) => {
+  try {
+    const items = await prisma.chatSession.findMany({
+      orderBy: { updatedAt: "desc" },
+      include: { 
+        _count: { select: { messages: true } },
+        documents: { select: { id: true, name: true, type: true, createdAt: true } } 
+      },
+    });
+    res.json({ success: true, items });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.get(["/sessions/:id", "/api/sessions/:id"], requireAuth, async (req, res) => {
+  try {
+    const item = await prisma.chatSession.findUnique({
+      where: { id: req.params.id },
+      include: { 
+        messages: { orderBy: { createdAt: "asc" } },
+        documents: true
+      },
+    });
+    if (!item) return res.status(404).json({ success: false, error: "Session not found" });
+    res.json({ success: true, item });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.post(["/sessions", "/api/sessions"], requireAuth, async (req, res) => {
+  try {
+    const { title, model, transport, workflowMode } = req.body;
+    const session = await prisma.chatSession.create({
+      data: {
+        title: title || "New Chat",
+        model: model || "llama3",
+        transport: transport || "stream",
+        workflowMode: workflowMode || "multi-step",
+      },
+    });
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.post(["/sessions/:id/rename", "/api/sessions/:id/rename"], requireAuth, async (req, res) => {
+  try {
+    const { title } = req.body;
+    const session = await prisma.chatSession.update({
+      where: { id: req.params.id },
+      data: { title },
+    });
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.delete(["/sessions/:id", "/api/sessions/:id"], requireAuth, async (req, res) => {
+  try {
+    await prisma.chatSession.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, async (req, res) => {
+  try {
+    const { role, content, model, transport, modelSelection } = req.body;
+    const message = await prisma.chatMessage.create({
+      data: {
+        sessionId: req.params.id,
+        role,
+        content,
+        model,
+        transport,
+        modelSelection,
+      },
+    });
+    // Update session updatedAt
+    await prisma.chatSession.update({
+      where: { id: req.params.id },
+      data: { updatedAt: new Date() },
+    });
+    res.json({ success: true, message });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
+
+    const { id: sessionId } = req.params;
+    const { originalname, path: filePath, mimetype } = req.file;
+
+    console.log(`[apps/api] Processing document upload: ${originalname} (${mimetype}) for session ${sessionId}`);
+
+    let content = "";
+    if (mimetype === "application/pdf") {
+      try {
+        console.log("[apps/api] Starting PDF extraction...");
+        const dataBuffer = fs.readFileSync(filePath);
+        
+        // Resolve pdf-parse correctly (Standard 1.1.1 version is a function)
+        const pdf = require("pdf-parse");
+        const data = await pdf(dataBuffer);
+        content = data.text;
+        
+        console.log(`[apps/api] PDF extraction successful. Extracted ${content.length} characters.`);
+      } catch (pdfErr) {
+        console.error("[apps/api] PDF processing failed:", pdfErr);
+        throw new Error(`PDF extraction failed: ${pdfErr instanceof Error ? pdfErr.message : String(pdfErr)}`);
+      }
+    } else {
+      content = fs.readFileSync(filePath, "utf-8");
+      console.log(`[apps/api] Text/TS extraction successful. Read ${content.length} characters.`);
+    }
+
+    // Cleanup local file immediately
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    const doc = await prisma.chatDocument.create({
+      data: {
+        sessionId,
+        name: originalname,
+        type: mimetype.split("/")[1] || "txt",
+        content: content || "",
+      },
+    });
+
+    console.log(`[apps/api] Document ${doc.id} saved to database.`);
+    res.json({ success: true, document: doc });
+  } catch (error) {
+    console.error("[apps/api] Document upload handler crashed:", error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.get(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth, async (req, res) => {
+  try {
+    const sessionId = req.params.id;
+    const docs = await prisma.chatDocument.findMany({
+      where: { sessionId },
+      select: { id: true, name: true, type: true, createdAt: true },
+    });
+    res.json({ success: true, items: docs });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.delete(["/sessions/:id/documents/:docId", "/api/sessions/:id/documents/:docId"], requireAuth, async (req, res) => {
+  try {
+    const { docId } = req.params;
+    await prisma.chatDocument.delete({
+      where: { id: docId },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
 });
 
 app.get(["/workflows", "/api/workflows"], requireAuth, (_req, res) => {
@@ -756,6 +946,20 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     const mode = payload.mode === "direct" ? "direct" : "multi-step";
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
+    const sessionId = payload.sessionId;
+
+    // Fetch context documents if sessionId exists
+    let docContext = "";
+    if (sessionId) {
+      const documents = await prisma.chatDocument.findMany({
+        where: { sessionId },
+      });
+      if (documents.length > 0) {
+        docContext = "\n\n--- REFERENCE CONTEXT FROM ATTACHED DOCUMENTS ---\n";
+        docContext += documents.map(d => `[Source: ${d.name}]\n${d.content}`).join("\n\n---\n\n");
+        docContext += "\n--- END OF CONTEXT ---\n\n";
+      }
+    }
 
     const { selectedModel, selectionMode } = await resolveRequestedModel(
       requestedModel,
@@ -772,10 +976,18 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     const topic = getTopicFromMessage(message);
     const { memoryRunCount, memorySummary } = getMemorySummary(topic);
 
+    const finalPrompt = docContext ? `${docContext}\nUser Request: ${message}` : message;
+    
+    if (docContext) {
+      console.log(`[apps/api] Final assembled prompt for AI (first 500 chars):\n${finalPrompt.slice(0, 500)}...`);
+    } else {
+      console.log(`[apps/api] No document context added to this prompt.`);
+    }
+
     const finalOutput =
       mode === "direct"
-        ? await makeDirectOutput(message, selectedModel)
-        : await makeAgentOutput(message, topic, selectedModel);
+        ? await makeDirectOutput(finalPrompt, selectedModel)
+        : await makeAgentOutput(finalPrompt, topic, selectedModel);
 
     const now = new Date().toISOString();
     const run: RunRecord = {
@@ -831,6 +1043,20 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
     const mode = payload.mode === "direct" ? "direct" : "multi-step";
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
+    const sessionId = payload.sessionId;
+
+    // Fetch context documents if sessionId exists
+    let docContext = "";
+    if (sessionId) {
+      const documents = await prisma.chatDocument.findMany({
+        where: { sessionId },
+      });
+      if (documents.length > 0) {
+        docContext = "\n\n--- REFERENCE CONTEXT FROM ATTACHED DOCUMENTS ---\n";
+        docContext += documents.map(d => `[Source: ${d.name}]\n${d.content}`).join("\n\n---\n\n");
+        docContext += "\n--- END OF CONTEXT ---\n\n";
+      }
+    }
 
     const { selectedModel, selectionMode } = await resolveRequestedModel(
       requestedModel,
@@ -838,6 +1064,8 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
       message,
       mode
     );
+
+    const finalPrompt = docContext ? `${docContext}\nUser Request: ${message}` : message;
 
     const workflow =
       mode === "direct"
@@ -863,8 +1091,8 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
 
     const streamedOutput =
       mode === "direct"
-        ? await streamDirectOutput(message, selectedModel, onChunk)
-        : await streamAgentOutput(message, topic, selectedModel, onChunk);
+        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk)
+        : await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk);
 
     const finalOutput = streamedOutput || fullOutput;
     const now = new Date().toISOString();
