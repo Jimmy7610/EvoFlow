@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers } from "lucide-react";
+import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip } from "lucide-react";
 
 type Message = {
   id: string;
@@ -288,10 +288,13 @@ export default function ChatClient() {
   const [isComparisonSending, setIsComparisonSending] = useState(false);
   const [devErrorText, setDevErrorText] = useState("");
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isAborted, setIsAborted] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const isDark = theme === "dark";
   const ui = {
@@ -312,6 +315,15 @@ export default function ChatClient() {
     actionText: isDark ? "#e2e8f0" : "#101828",
     accent: "#60a5fa",
   };
+
+  // Auto-resize logic
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 300);
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [input]);
 
   const addNotification = (message: string, type: "info" | "success" | "error" = "info") => {
     const id = uid("note");
@@ -561,10 +573,10 @@ export default function ChatClient() {
       updatedAt: now,
       messages: [...session.messages, userMessage, assistantMessage],
     }));
-    setInput("");
-    setErrorText("");
     setIsSending(true);
+    setIsAborted(false);
     setShouldAutoScroll(true);
+    abortControllerRef.current = new AbortController();
 
     // Sync User Msg
     fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
@@ -578,7 +590,12 @@ export default function ChatClient() {
       const payload = { message: prompt, mode: activeSession.workflowMode, model: activeSession.model, modelSelection: activeSession.modelSelection, sessionId: activeSession.id };
 
       if (activeSession.transport === "stream") {
-        const response = await fetch(`${apiBaseUrl}/runs/stream`, { method: "POST", headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, body: JSON.stringify(payload) });
+        const response = await fetch(`${apiBaseUrl}/runs/stream`, { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, 
+          body: JSON.stringify(payload),
+          signal: abortControllerRef.current.signal
+        });
         if (!response.ok || !response.body) throw new Error("Stream failed");
         
         const modelFromHeader = response.headers.get("x-evoflow-model") || activeSession.model;
@@ -612,9 +629,21 @@ export default function ChatClient() {
         fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "assistant", content: output, model, transport: "normal", modelSelection: selection }) }).catch(e => console.error("Sync assistant failed"));
       }
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "Chat failed");
+      if ((error as Error).name === 'AbortError') {
+        console.log("Fetch aborted");
+      } else {
+        setErrorText(error instanceof Error ? error.message : "Chat failed");
+      }
     } finally {
       setIsSending(false);
+      abortControllerRef.current = null;
+    }
+  }
+
+  function handleStopGeneration() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsAborted(true);
     }
   }
 
@@ -901,14 +930,119 @@ export default function ChatClient() {
               </div>
 
               {/* Input Area */}
-              <div style={{ padding: 20, borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
-                 <div style={{ position: "relative", maxWidth: 900, margin: "0 auto", display: "flex", gap: 10, alignItems: "flex-end" }}>
-                    <div style={{ flex: 1, borderRadius: 16, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, overflow: "hidden" }}>
-                       <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="Ask anything..." style={{ width: "100%", minHeight: 80, maxHeight: 300, padding: 12, border: "none", background: "none", color: ui.text, fontSize: 14, outline: "none", resize: "none" }} />
+              <div style={{ padding: "10px 20px 20px 20px", borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
+                 <div style={{ maxWidth: 900, margin: "0 auto" }}>
+                    {/* Attachment Chips */}
+                    <AnimatePresence>
+                      {activeSession.documents && activeSession.documents.length > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 10 }}
+                          style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}
+                        >
+                          {activeSession.documents.map(doc => (
+                            <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 10, background: isDark ? "rgba(96,165,250,0.1)" : "rgba(37,99,235,0.05)", border: `1px solid ${isDark ? "rgba(96,165,250,0.2)" : "rgba(37,99,235,0.1)"}`, fontSize: 11, color: ui.accent, fontWeight: 600 }}>
+                              <Paperclip size={12} />
+                              <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
+                              <button onClick={() => handleDeleteDocument(doc.id)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", marginLeft: 2, padding: 0 }}>×</button>
+                            </div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div style={{ position: "relative", display: "flex", gap: 10, alignItems: "flex-end" }}>
+                       <div style={{ 
+                         flex: 1, 
+                         borderRadius: 20, 
+                         border: `1px solid ${ui.controlBorder}`, 
+                         background: ui.controlBg, 
+                         overflow: "hidden", 
+                         boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                         transition: "box-shadow 0.2s, border-color 0.2s",
+                         ...(input.length > 0 ? { borderColor: ui.accent, boxShadow: `0 0 0 2px ${isDark ? "rgba(96,165,250,0.15)" : "rgba(37,99,235,0.1)"}` } : {})
+                       }}>
+                          <textarea 
+                            ref={textareaRef}
+                            value={input} 
+                            onChange={e => setInput(e.target.value)} 
+                            onKeyDown={e => { 
+                              if (e.key === "Enter") {
+                                if (e.shiftKey) return; // Allow newline
+                                if (e.metaKey || e.ctrlKey || true) { // Standard Enter or Cmd+Enter
+                                  e.preventDefault(); 
+                                  handleSend(); 
+                                }
+                              }
+                              if (e.key === "Escape") {
+                                textareaRef.current?.blur();
+                              }
+                            }} 
+                            placeholder="Type your message..." 
+                            style={{ 
+                              width: "100%", 
+                              minHeight: 50, 
+                              maxHeight: 300, 
+                              padding: "14px 16px", 
+                              border: "none", 
+                              background: "none", 
+                              color: ui.text, 
+                              fontSize: 15, 
+                              lineHeight: 1.5,
+                              outline: "none", 
+                              resize: "none" 
+                            }} 
+                          />
+                       </div>
+                       
+                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                         {isSending ? (
+                           <button 
+                             onClick={handleStopGeneration}
+                             style={{ 
+                               width: 48, 
+                               height: 48, 
+                               borderRadius: 16, 
+                               background: "#ef4444", 
+                               color: "#fff", 
+                               border: "none", 
+                               cursor: "pointer", 
+                               display: "flex", 
+                               alignItems: "center", 
+                               justifyContent: "center",
+                               boxShadow: "0 4px 12px rgba(239,68,68,0.25)"
+                             }}
+                           >
+                              <Square size={18} fill="currentColor" />
+                           </button>
+                         ) : (
+                           <button 
+                             onClick={handleSend} 
+                             disabled={!input.trim()} 
+                             style={{ 
+                               width: 48, 
+                               height: 48, 
+                               borderRadius: 16, 
+                               background: ui.accent, 
+                               color: "#fff", 
+                               border: "none", 
+                               cursor: "pointer", 
+                               display: "flex", 
+                               alignItems: "center", 
+                               justifyContent: "center", 
+                               opacity: !input.trim() ? 0.3 : 1,
+                               boxShadow: input.trim() ? `0 4px 12px ${isDark ? "rgba(96,165,250,0.3)" : "rgba(37,99,235,0.2)"}` : "none",
+                               transition: "all 0.2s"
+                             }}
+                           >
+                              <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.9 }}>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+                              </motion.div>
+                           </button>
+                         )}
+                       </div>
                     </div>
-                    <button onClick={handleSend} disabled={!input.trim() || isSending} style={{ width: 48, height: 48, borderRadius: 12, background: ui.accent, color: "#fff", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: !input.trim() || isSending ? 0.5 : 1 }}>
-                       {isSending ? "..." : "↑"}
-                    </button>
                  </div>
               </div>
             </>
