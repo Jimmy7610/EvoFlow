@@ -7,7 +7,11 @@
     - [x] Implement session duplication (API + UI)
     - [x] Add 'Safe Delete' confirmation (UI instead of alert)
     - [x] Verified and pushed to repo
-- [ ] **Day 3: Sidebar Premium Pass**
+- [x] **Day 3: Sidebar Premium Pass**
+    - [x] Add real-time session search
+    - [x] Hide action buttons until hover (Cleaner UI)
+    - [x] Add '+ New' button directly in sidebar
+    - [x] Verified and pushed to repo
 - [ ] **Day 4: Chat Message Polish**
 - [ ] **Day 5: Composer Perfection**
 - [ ] **Day 6: Streaming Perfection**

@@ -370,8 +370,6 @@ export default function ChatClient() {
   const [devErrorText, setDevErrorText] = useState("");
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [isAborted, setIsAborted] = useState(false);
-  const [hoveredSessionId, setHoveredSessionId] = useState("");
-  const [hoveredMessageId, setHoveredMessageId] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -941,17 +939,49 @@ export default function ChatClient() {
                 <motion.div
                   key={session.id}
                   onClick={() => setActiveSessionId(session.id)}
+                  onMouseEnter={() => setHoveredSessionId(session.id)}
+                  onMouseLeave={() => setHoveredSessionId("")}
                   style={{
                     padding: "10px",
                     borderRadius: 12,
                     cursor: "pointer",
                     background: activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent",
                     border: `1px solid ${activeSessionId === session.id ? ui.accent : "transparent"}`,
-                    transition: "all 0.2s"
+                    transition: "all 0.2s",
+                    position: "relative"
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
-                  <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
+                      <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
+                    </div>
+                    
+                    <AnimatePresence>
+                      {hoveredSessionId === session.id && (
+                        <motion.button
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
+                          style={{
+                            background: confirmDeleteId === session.id ? "#ef4444" : "none",
+                            border: "none",
+                            color: confirmDeleteId === session.id ? "#fff" : "#ef4444",
+                            padding: 4,
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            display: "flex",
+                            alignItems: "center"
+                          }}
+                        >
+                          {confirmDeleteId === session.id ? "SURE?" : <Trash2 size={12} />}
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </motion.div>
               ))}
             </AnimatePresence>
