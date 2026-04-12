@@ -24,6 +24,13 @@ EvoFlow has recently undergone a major structural and visual transformation to b
   - **Power User Shortcuts**: `Cmd/Ctrl + Enter` to send, `Shift + Enter` for new lines, `Esc` to blur.
 - **Battle Mode (Day 3)**: Compare two different local models side-by-side in real-time.
 
+### 📁 Session & Export Power (Day 7)
+Professional-grade tools for high-volume data handling:
+- **Multi-Selection Mode**: Enter "Manage" mode to select multiple sessions for bulk operations.
+- **Markdown Export**: Transform your chats into high-fidelity, readable `.md` documents with full metadata preserved.
+- **Bulk Cleanup**: Permanently delete multiple sessions at once with a single, safe confirmation flow.
+- **Selective JSON Export**: Export only curated sessions to share or back up specific workflows.
+
 ### 🎨 Theme Ecosystem (Day 6)
 Experience EvoFlow in your favorite environment. All themes are persistent via `localStorage`.
 - **Midnight**: Our signature deep blue/black oculart-safe dark mode.
