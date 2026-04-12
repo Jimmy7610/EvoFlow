@@ -857,6 +857,16 @@ app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, 
   }
 });
 
+app.delete(["/messages/:id", "/api/messages/:id"], requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.chatMessage.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 app.post(["/sessions/:id/chat", "/api/sessions/:id/chat"], requireAuth, async (req, res) => {
   try {
     const { id } = req.params;

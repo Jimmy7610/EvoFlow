@@ -1,9 +1,11 @@
-
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers } from "lucide-react";
 
 type Message = {
   id: string;
@@ -45,79 +47,23 @@ type DevControlItem = {
   running: boolean;
   managed: boolean;
   port?: number;
-  pid?: number | null;
-  startedAt?: string;
-  cwd?: string;
+  pid?: number;
   command?: string;
-  lastError?: string;
+  cwd?: string;
 };
 
 type DevStatusResponse = {
-  success?: boolean;
-  controls?: {
-    api?: DevControlItem;
-    web?: DevControlItem;
-    executor?: DevControlItem;
-  };
+  success: boolean;
+  controls: Record<string, DevControlItem>;
   error?: string;
 };
 
-type AgentRole = "assistant" | "planner" | "executor" | "system" | "critic";
+const EXPORT_FILE_PREFIX = "evoflow-chats";
 
-const STORAGE_KEY = "evoflow-chat-sessions-v1";
-const EXPORT_FILE_PREFIX = "evoflow-chat-export";
-
-function uid(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function formatTitle(input: string) {
-  const trimmed = input.trim().replace(/\s+/g, " ");
-  return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed || "New chat";
-}
-
-function createEmptySession(defaultModel: string): Session {
-  const now = new Date().toISOString();
-  return {
-    id: uid("session"),
-    title: "New chat",
-    createdAt: now,
-    updatedAt: now,
-    workflowMode: "multi-step",
-    model: defaultModel,
-    modelSelection: "auto",
-    transport: "stream",
-    messages: [],
-    documents: [],
-  };
-}
-
-function loadSessions(defaultModel: string): Session[] {
-  if (typeof window === "undefined") return [createEmptySession(defaultModel)];
-
+// --- UTILS ---
+async function fetchModels(baseUrl: string, demoToken: string): Promise<{ models: string[]; defaultModel: string }> {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [createEmptySession(defaultModel)];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return [createEmptySession(defaultModel)];
-    }
-    return parsed as Session[];
-  } catch {
-    return [createEmptySession(defaultModel)];
-  }
-}
-
-function saveSessions(sessions: Session[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-}
-
-async function fetchModels(apiBaseUrl: string, demoToken: string): Promise<{ models: string[]; defaultModel: string }> {
-  const endpoints = ["/ollama/models", "/api/ollama/models"];
-
-  for (const path of endpoints) {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${baseUrl}/models`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -125,267 +71,187 @@ async function fetchModels(apiBaseUrl: string, demoToken: string): Promise<{ mod
       },
     });
 
-    if (!response.ok) continue;
     const data = (await response.json()) as ModelsResponse;
-    const models = Array.isArray(data.items) ? data.items : [];
-    const defaultModel = (typeof data.defaultModel === "string" && data.defaultModel) || models[0] || "";
-    return { models, defaultModel };
+    const items = data.items || [];
+    return {
+      models: items,
+      defaultModel: data.defaultModel || (items.length > 0 ? items[0] : "llama3"),
+    };
+  } catch (error) {
+    console.error("Failed to fetch models", error);
+    return { models: ["llama3", "mistral", "phi3"], defaultModel: "llama3" };
   }
-
-  return { models: [], defaultModel: "" };
 }
 
-function detectAgentRole(content: string): AgentRole {
-  const normalized = (content || "").trim().toLowerCase();
-  if (normalized.startsWith("[planner]") || normalized.startsWith("planner:")) return "planner";
-  if (normalized.startsWith("[executor]") || normalized.startsWith("executor:")) return "executor";
-  if (normalized.startsWith("[system]") || normalized.startsWith("system:")) return "system";
-  if (normalized.startsWith("[critic]") || normalized.startsWith("critic:")) return "critic";
-  return "assistant";
+function loadSessions(defaultModel: string): Session[] {
+  if (typeof window === "undefined") return [];
+  const saved = localStorage.getItem("evoflow_sessions");
+  if (!saved) return [];
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return [];
+  }
 }
 
-function getAgentPresentation(role: AgentRole) {
-  switch (role) {
-    case "planner":
-      return { label: "Planner", accent: "#7c3aed" };
-    case "executor":
-      return { label: "Executor", accent: "#2563eb" };
-    case "system":
-      return { label: "System", accent: "#0f766e" };
-    case "critic":
-      return { label: "Critic", accent: "#b45309" };
-    default:
-      return { label: "EvoFlow AI", accent: "#475467" };
-  }
+function createEmptySession(model: string): Session {
+  return {
+    id: uid("session"),
+    title: "New chat",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    workflowMode: "direct",
+    model,
+    modelSelection: "manual",
+    transport: "stream",
+    messages: [],
+    documents: [],
+  };
+}
+
+function uid(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).substring(2, 10)}`;
+}
+
+function formatTitle(text: string) {
+  if (text.length <= 40) return text;
+  return text.substring(0, 37) + "...";
 }
 
 function createExportPayload(sessions: Session[]) {
   return {
-    version: 1,
+    version: "2.0",
     exportedAt: new Date().toISOString(),
-    app: "EvoFlow AI Ops",
     sessions,
   };
 }
 
-function normalizeImportedSessions(payload: unknown, defaultModel: string): Session[] {
-  const source = Array.isArray(payload)
-    ? payload
-    : payload && typeof payload === "object" && Array.isArray((payload as { sessions?: unknown[] }).sessions)
-      ? (payload as { sessions: unknown[] }).sessions
-      : [];
-
-  return source.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-
-    const raw = item as Partial<Session> & { messages?: Partial<Message>[] };
-    const now = new Date().toISOString();
-    const messages = Array.isArray(raw.messages)
-      ? raw.messages
-          .filter((message) => message && typeof message === "object")
-          .map((message) => ({
-            id: uid("message"),
-            role: message?.role === "assistant" ? "assistant" : "user",
-            content: typeof message?.content === "string" ? message.content : "",
-            createdAt: typeof message?.createdAt === "string" ? message.createdAt : now,
-            model: typeof message?.model === "string" ? message.model : raw.model || defaultModel,
-            modelSelection: message?.modelSelection === "manual" ? "manual" : "auto",
-            transport: message?.transport === "normal" ? "normal" : "stream",
-          }))
-      : [];
-
-    return [{
-      id: uid("session"),
-      title: typeof raw.title === "string" ? formatTitle(raw.title) : "Imported chat",
-      createdAt: typeof raw.createdAt === "string" ? raw.createdAt : now,
-      updatedAt: now,
-      workflowMode: raw.workflowMode === "direct" ? "direct" : "multi-step",
-      model: raw.model || defaultModel,
-      modelSelection: raw.modelSelection === "manual" ? "manual" : "auto",
-      transport: raw.transport === "normal" ? "normal" : "stream",
-      messages,
-      documents: Array.isArray(raw.documents) ? raw.documents : [],
-    }];
-  });
+function normalizeImportedSessions(data: any, defaultModel: string): Session[] {
+  if (!data || typeof data !== "object") return [];
+  const items = Array.isArray(data) ? data : data.sessions || [];
+  return items.map((s: any) => ({
+    id: s.id || uid("session"),
+    title: s.title || "Imported Chat",
+    createdAt: s.createdAt || new Date().toISOString(),
+    updatedAt: s.updatedAt || new Date().toISOString(),
+    workflowMode: s.workflowMode || "direct",
+    model: s.model || defaultModel,
+    modelSelection: s.modelSelection || "manual",
+    transport: s.transport || "stream",
+    messages: s.messages || [],
+    documents: s.documents || [],
+  }));
 }
 
-
-function detectCodeLanguage(code: string) {
-  const source = code.toLowerCase();
-  if (source.includes("function ") || source.includes("interface ") || source.includes(": string") || source.includes("typescript")) return "typescript";
-  if (source.includes("const ") || source.includes("let ") || source.includes("=>") || source.includes("javascript")) return "javascript";
-  if (source.includes("def ") || source.includes("print(") || source.includes("python")) return "python";
-  if (source.includes("<div") || source.includes("</")) return "html";
-  return "code";
+function detectAgentRole(content: string): string {
+  if (content.toLowerCase().includes("[planner]")) return "planner";
+  if (content.toLowerCase().includes("[executor]")) return "executor";
+  if (content.toLowerCase().includes("[brain]")) return "brain";
+  return "default";
 }
 
-function RichMessageContent({
-  content,
-  isStreaming,
-}: {
-  content: string;
-  isStreaming: boolean;
-}) {
-  async function copyText(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      // ignore
-    }
+function getAgentPresentation(role: string) {
+  switch (role) {
+    case "planner": return { label: "Planner", color: "#3b82f6", accent: "#60a5fa" };
+    case "executor": return { label: "Executor", color: "#10b981", accent: "#34d399" };
+    case "brain": return { label: "Thinking", color: "#8b5cf6", accent: "#a78bfa" };
+    default: return null;
   }
+}
 
-  const normalized = content || "";
-  const codeBlockRegex = /```([a-zA-Z0-9_-]+)?\n?([\s\S]*?)```/g;
-  const blocks: Array<{ type: "text" | "code"; value: string; language?: string }> = [];
+// --- SUB-COMPONENT: RICH MESSAGE CONTENT (DAY 4 UPGRADE) ---
+function RichMessageContent({ content, isStreaming, isDark, ui }: { content: string, isStreaming: boolean, isDark: boolean, ui: any }) {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = codeBlockRegex.exec(normalized)) !== null) {
-    if (match.index > lastIndex) {
-      blocks.push({ type: "text", value: normalized.slice(lastIndex, match.index) });
-    }
-    blocks.push({
-      type: "code",
-      language: match[1] || detectCodeLanguage(match[2] || ""),
-      value: match[2] || "",
-    });
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < normalized.length) {
-    blocks.push({ type: "text", value: normalized.slice(lastIndex) });
-  }
-
-  if (blocks.length === 0) {
-    blocks.push({ type: "text", value: normalized });
-  }
+  const handleCopyCode = (code: string, id: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {blocks.map((block, index) => {
-        if (block.type === "code") {
-          return (
-            <div
-              key={`code-${index}`}
-              style={{
-                border: "1px solid rgba(255,255,255,0.08)",
-                borderRadius: 18,
-                overflow: "hidden",
-                background: "#0b1220",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "8px 10px",
-                  background: "#111827",
-                  color: "#cbd5e1",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.4,
-                }}
-              >
-                <span>{block.language || "code"}</span>
-                <button
-                  type="button"
-                  onClick={() => copyText(block.value)}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #334155",
-                    background: "#0f172a",
-                    color: "#e2e8f0",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  Copy code
-                </button>
-              </div>
-              <pre
-                style={{
-                  margin: 0,
-                  padding: "6px 10px",
-                  overflowX: "auto",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: 12.5,
-                  lineHeight: 1.4,
-                  color: "#f8fafc",
-                }}
-              >
-                {block.value}
-              </pre>
+    <div className="prose-container" style={{ fontSize: 14, lineHeight: 1.6, color: "inherit" }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ children }) => (
+            <div style={{ overflowX: "auto", margin: "16px 0", borderRadius: 8, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>{children}</table>
             </div>
-          );
-        }
+          ),
+          thead: ({ children }) => <thead style={{ background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", borderBottom: `2px solid ${ui.panelBorder}` }}>{children}</thead>,
+          th: ({ children }) => <th style={{ padding: "12px", textAlign: "left", fontWeight: 800, color: ui.text }}>{children}</th>,
+          td: ({ children }) => <td style={{ padding: "12px", borderBottom: `1px solid ${ui.panelBorder}`, opacity: 0.9 }}>{children}</td>,
+          tr: ({ children }) => <tr style={{ borderBottom: `1px solid ${ui.panelBorder}` }}>{children}</tr>,
+          code({ node, inline, className, children, ...props }: any) {
+            const match = /language-(\w+)/.exec(className || "");
+            const codeContent = String(children).replace(/\n$/, "");
+            const codeId = useMemo(() => Math.random().toString(36).substr(2, 9), []);
 
-        const lines = block.value.split("\n");
-        return (
-          <div key={`text-${index}`} style={{ display: "grid", gap: 4 }}>
-            {lines.map((line, lineIndex) => {
-              const trimmed = line.trim();
-              if (!trimmed) return <div key={`spacer-${lineIndex}`} style={{ height: 2 }} />;
-              if (trimmed.startsWith("### ")) return <h3 key={lineIndex} style={{ margin: 0, fontSize: 17 }}>{trimmed.slice(4)}</h3>;
-              if (trimmed.startsWith("## ")) return <h2 key={lineIndex} style={{ margin: 0, fontSize: 19 }}>{trimmed.slice(3)}</h2>;
-              if (trimmed.startsWith("# ")) return <h1 key={lineIndex} style={{ margin: 0, fontSize: 20 }}>{trimmed.slice(2)}</h1>;
-              if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-                return (
-                  <div key={lineIndex} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <span style={{ fontWeight: 800 }}>•</span>
-                    <span>{trimmed.slice(2)}</span>
-                  </div>
-                );
-              }
-              if (/^\d+\.\s/.test(trimmed)) {
-                const firstDot = trimmed.indexOf(".");
-                return (
-                  <div key={lineIndex} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span style={{ fontWeight: 800 }}>{trimmed.slice(0, firstDot + 1)}</span>
-                    <span>{trimmed.slice(firstDot + 2)}</span>
-                  </div>
-                );
-              }
+            if (inline) {
               return (
-                <p key={lineIndex} style={{ margin: 0, lineHeight: 1.4 }}>
-                  {line}
-                  {isStreaming && index === blocks.length - 1 && lineIndex === lines.length - 1 ? (
-                    <span style={{ marginLeft: 2, animation: "blink 1s step-end infinite" }}>▌</span>
-                  ) : null}
-                </p>
+                <code style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(15,23,42,0.05)", padding: "2px 5px", borderRadius: 4, fontStyle: "normal", fontWeight: 600, fontSize: "0.9em" }} {...props}>
+                  {children}
+                </code>
               );
-            })}
-          </div>
-        );
-      })}
+            }
+
+            return (
+              <div style={{ position: "relative", margin: "16px 0", borderRadius: 10, overflow: "hidden", border: `1px solid ${ui.panelBorder}`, background: "#0f172a" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", background: "rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>{match ? match[1] : "code"}</span>
+                  <button
+                    onClick={() => handleCopyCode(codeContent, codeId)}
+                    style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 700 }}
+                  >
+                    {copiedId === codeId ? <Check size={12} style={{ color: "#22c55e" }} /> : <Copy size={12} />}
+                    {copiedId === codeId ? "COPIED" : "COPY"}
+                  </button>
+                </div>
+                <pre style={{ margin: 0, padding: 12, overflowX: "auto", fontSize: 13, lineHeight: 1.5 }}>
+                  <code className={className} style={{ background: "transparent", padding: 0, color: "#e2e8f0" }} {...props}>
+                    {children}
+                  </code>
+                </pre>
+              </div>
+            );
+          },
+          blockquote: ({ children }) => (
+            <blockquote style={{ margin: "12px 0", padding: "4px 16px", borderLeft: `4px solid ${ui.accent}`, background: isDark ? "rgba(96,165,250,0.05)" : "rgba(37,99,235,0.03)", fontStyle: "italic", opacity: 0.85 }}>{children}</blockquote>
+          ),
+          ul: ({ children }) => <ul style={{ margin: "10px 0", paddingLeft: "20px", display: "grid", gap: 4 }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ margin: "10px 0", paddingLeft: "20px", display: "grid", gap: 4 }}>{children}</ol>,
+          li: ({ children }) => <li style={{ marginBottom: 4, marginLeft: 4 }}>{children}</li>,
+          a: ({ href, children }) => <Link href={href || "#"} target="_blank" style={{ color: ui.accent, textDecoration: "underline", fontWeight: 600 }}>{children} <ExternalLink size={12} style={{ display: "inline", marginBottom: 2 }} /></Link>,
+          p: ({ children }) => (
+            <div style={{ margin: "10px 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {children}
+              {isStreaming && <span style={{ marginLeft: 2, display: "inline-block", width: 8, height: 15, background: ui.accent, verticalAlign: "middle", animation: "blink 1s step-end infinite" }}></span>}
+            </div>
+          )
+        }}
+      >
+        {content}
+      </ReactMarkdown>
 
       <style>{`
-        @keyframes blink {
-          50% { opacity: 0; }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 0.4; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.2); }
-        }
+        @keyframes blink { 50% { opacity: 0; } }
+        .prose-container table tr:last-child td { border-bottom: none; }
       `}</style>
     </div>
   );
 }
 
+// --- MAIN COMPONENT ---
 export default function ChatClient() {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/+$/, "");
   const demoToken = process.env.NEXT_PUBLIC_DEMO_TOKEN || "";
 
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState("");
+  
+  // Initialization & System Effects
   useEffect(() => {
-    // Lock body scroll for the fixed dashboard feel
     const originalBodyOverflow = document.body.style.overflow;
     const originalHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
@@ -407,6 +273,7 @@ export default function ChatClient() {
   const [confirmDeleteId, setConfirmDeleteId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [hoveredSessionId, setHoveredSessionId] = useState("");
+  const [hoveredMessageId, setHoveredMessageId] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [agentViewEnabled, setAgentViewEnabled] = useState(true);
   const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
@@ -419,18 +286,12 @@ export default function ChatClient() {
   const [comparisonModel, setComparisonModel] = useState<string>("");
   const [comparisonMessages, setComparisonMessages] = useState<Message[]>([]);
   const [isComparisonSending, setIsComparisonSending] = useState(false);
-
-  const addNotification = (message: string, type: "info" | "success" | "error" = "info") => {
-    const id = uid("note");
-    setNotifications((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 4000);
-  };
   const [devErrorText, setDevErrorText] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const docInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const isDark = theme === "dark";
   const ui = {
@@ -452,217 +313,145 @@ export default function ChatClient() {
     accent: "#60a5fa",
   };
 
-  useEffect(() => {
-    let isMounted = true;
+  const addNotification = (message: string, type: "info" | "success" | "error" = "info") => {
+    const id = uid("note");
+    setNotifications((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4000);
+  };
 
-    (async () => {
-      setIsLoadingModels(true);
-      const result = await fetchModels(apiBaseUrl, demoToken);
-      if (!isMounted) return;
+  // Helper functions
+  function patchSession(sessionId: string, updater: (session: Session) => Session) {
+    setSessions((prev) => prev.map((session) => (session.id === sessionId ? updater(session) : session)));
+  }
 
-      setModels(result.models);
-      setDefaultModel(result.defaultModel);
-      setComparisonModel(result.defaultModel);
-
-      // 1. Fetch from server
-      let serverSessions: Session[] = [];
-      try {
-        const resp = await fetch(`${apiBaseUrl}/api/sessions`);
-        const data = await resp.json();
-        if (data.success && Array.isArray(data.items)) {
-          serverSessions = data.items.map((s: any) => ({
-             ...s,
-             messages: s.messages || [],
-             documents: s.documents || []
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to fetch server sessions", e);
-      }
-
-      // 2. Synchronization logic
-      const localSessions = loadSessions(result.defaultModel);
-      
-      if (serverSessions.length > 0) {
-        // If server has data, use it as the source of truth
-        setSessions(serverSessions);
-        setActiveSessionId(serverSessions[0].id);
-      } else if (localSessions.length > 0 && localSessions[0].title !== "New chat") {
-        // Only migrate if server is empty but local has meaningful data
-        console.log("Migrating local sessions to server...");
-        setSessions(localSessions);
-        setActiveSessionId(localSessions[0].id);
-      } else {
-        // Fallback to empty state
-        setSessions(serverSessions.length > 0 ? serverSessions : (localSessions.length > 0 ? localSessions : [createEmptySession(result.defaultModel)]));
-        setActiveSessionId(serverSessions[0]?.id || localSessions[0]?.id || "");
-      }
-      
-      setIsLoadingModels(false);
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [apiBaseUrl, demoToken]);
-
-  // Disable automatic localStorage saving as we move to SQL
-  // useEffect(() => {
-  //   if (sessions.length > 0) saveSessions(sessions);
-  // }, [sessions]);
-
-  useEffect(() => {
-    refreshDevStatus();
-    const timer = window.setInterval(() => {
-      refreshDevStatus();
-    }, 5000);
-
-    return () => window.clearInterval(timer);
-  }, [apiBaseUrl, demoToken]);
-
-
+  function updateActiveSessionField<K extends keyof Session>(field: K, value: Session[K]) {
+    if (!activeSession) return;
+    patchSession(activeSession.id, (session) => ({
+      ...session,
+      [field]: value,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) || null,
     [sessions, activeSessionId]
   );
 
-  function patchSession(sessionId: string, updater: (session: Session) => Session) {
-    setSessions((prev) => prev.map((session) => (session.id === sessionId ? updater(session) : session)));
-  }
-
-  function startRenameSession(sessionId: string, currentTitle: string) {
-    setEditingSessionId(sessionId);
-    setEditingTitle(currentTitle);
-  }
-
-  function cancelRenameSession() {
-    setEditingSessionId("");
-    setEditingTitle("");
-  }
-
-  async function handleSaveRename(sessionId: string) {
-    const nextTitle = formatTitle(editingTitle.trim());
-    if (!nextTitle) {
-      cancelRenameSession();
-      return;
-    }
-    patchSession(sessionId, (session) => ({
-      ...session,
-      title: nextTitle,
-      updatedAt: new Date().toISOString(),
-    }));
-    cancelRenameSession();
-
+  // API Callbacks
+  async function refreshDevStatus() {
     try {
-      await fetch(`${apiBaseUrl}/api/sessions/${sessionId}/rename`, {
+      const response = await fetch(`${apiBaseUrl}/dev/status`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+        },
+      });
+      const data = (await response.json()) as DevStatusResponse;
+      if (response.ok) {
+        setDevStatus(data.controls || null);
+        setDevErrorText("");
+      }
+    } catch (e) {
+      setDevErrorText("Status request failed");
+    }
+  }
+
+  async function handleDevControl(action: "start" | "stop") {
+    try {
+      setIsDevActionLoading(true);
+      const response = await fetch(`${apiBaseUrl}/dev/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
+        },
+      });
+      const data = (await response.json()) as DevStatusResponse;
+      if (response.ok) {
+        setDevStatus(data.controls || null);
+        setDevErrorText("");
+      }
+    } catch (error) {
+      setDevErrorText(`${action} request failed`);
+    } finally {
+      setIsDevActionLoading(false);
+    }
+  }
+
+  // --- Session Event Handlers ---
+  async function handleCreateSession() {
+    const fresh = createEmptySession(defaultModel);
+    setSessions((prev) => [fresh, ...prev]);
+    setActiveSessionId(fresh.id);
+    setInput("");
+    setErrorText("");
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: nextTitle }),
+        body: JSON.stringify({
+          title: fresh.title,
+          model: fresh.model,
+          transport: fresh.transport,
+          workflowMode: fresh.workflowMode,
+        }),
       });
-    } catch (e) {
-      console.error("Failed to sync rename to server", e);
-    }
-  }
-
-  function handleExportChats() {
-    const payload = createExportPayload(sessions);
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${EXPORT_FILE_PREFIX}-${stamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.URL.revokeObjectURL(url);
-  }
-
-  async function handleImportFile(file: File) {
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
-      const imported = normalizeImportedSessions(parsed, defaultModel);
-
-      if (imported.length === 0) {
-        setErrorText("Import failed: no valid chat sessions were found in the selected file.");
-        return;
-      }
-
-      setSessions((prev) => [...imported, ...prev]);
-      setActiveSessionId(imported[0].id);
-      cancelRenameSession();
-      setErrorText("");
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      setErrorText(`Import failed: ${text}`);
-    }
-  }
-
-  async function copyWholeMessage(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error("Failed to copy message:", error);
-    }
-  }
-
-  const handleDocumentPreview = async (docId: string) => {
-    setPreviewDocId(docId);
-    setPreviewDocData(null);
-    try {
-      const resp = await fetch(`${apiBaseUrl}/api/documents/${docId}`);
       const data = await resp.json();
-      if (data.success) {
-        setPreviewDocData(data.item);
-      } else {
-        addNotification("Failed to load document content", "error");
+      if (data.success && data.session) {
+        setSessions((prev) => prev.map(s => s.id === fresh.id ? { ...s, id: data.session.id } : s));
+        setActiveSessionId(data.session.id);
       }
     } catch (e) {
-      addNotification("Network error loading document", "error");
+      console.error("Failed to create session on server", e);
     }
-  };
+  }
 
-  const handleExportMarkdown = () => {
-    if (!activeSession) return;
-    const date = new Date().toLocaleDateString();
-    let md = `# EvoFlow Session: ${activeSession.title}\n\n`;
-    md += `**Date:** ${date}\n`;
-    md += `**Model:** ${activeSession.model} (${activeSession.workflowMode} mode)\n\n`;
-    
-    if (activeSession.documents && activeSession.documents.length > 0) {
-      md += `## Attached Context\n`;
-      activeSession.documents.forEach(d => {
-        md += `- ${d.name} (${d.type})\n`;
-      });
-      md += `\n---\n\n`;
+  async function handleDeleteSession(sessionId: string) {
+    if (confirmDeleteId !== sessionId) {
+      setConfirmDeleteId(sessionId);
+      return;
     }
-
-    activeSession.messages.forEach(m => {
-      md += `### ${m.role === 'user' ? 'USER' : 'ASSISTANT'}\n`;
-      if (m.model) md += `*Model: ${m.model}*\n\n`;
-      md += `${m.content}\n\n`;
+    setConfirmDeleteId("");
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      if (next.length === 0) {
+        const fb = createEmptySession(defaultModel);
+        setActiveSessionId(fb.id);
+        return [fb];
+      }
+      if (activeSessionId === sessionId) setActiveSessionId(next[0].id);
+      return next;
     });
+    try {
+      await fetch(`${apiBaseUrl}/api/sessions/${sessionId}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("Delete failed");
+    }
+  }
 
-    const blob = new Blob([md], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeSession.title.replace(/\s+/g, '_').toLowerCase()}_export.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    addNotification("Session exported to Markdown", "success");
-  };
+  async function handleDeleteMessage(messageId: string) {
+    if (!activeSession) return;
+    if (!window.confirm("Permanent delete?")) return;
+    patchSession(activeSession.id, (s) => ({
+      ...s,
+      messages: s.messages.filter((m) => m.id !== messageId),
+    }));
+    try {
+      await fetch(`${apiBaseUrl}/api/messages/${messageId}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("Message delete failed");
+    }
+  }
 
-  const docInputRef = useRef<HTMLInputElement|null>(null);
-
+  // --- Document Event Handlers ---
   async function handleDocumentUpload(file: File) {
     if (!activeSession) return;
     const formData = new FormData();
     formData.append("file", file);
-
     setIsUploading(true);
     try {
       const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/documents`, {
@@ -678,7 +467,7 @@ export default function ChatClient() {
         addNotification(`Uploaded ${file.name}`, "success");
       }
     } catch (e) {
-      console.error("Document upload failed", e);
+      console.error("Upload failed");
     } finally {
       setIsUploading(false);
     }
@@ -686,8 +475,7 @@ export default function ChatClient() {
 
   async function handleDeleteDocument(docId: string) {
     if (!activeSession) return;
-    if (!window.confirm("Remove this document from the session?")) return;
-
+    if (!window.confirm("Remove this document?")) return;
     try {
       const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/documents/${docId}`, {
         method: "DELETE",
@@ -700,200 +488,23 @@ export default function ChatClient() {
         }));
       }
     } catch (e) {
-      console.error("Document deletion failed", e);
+      console.error("Delete failed");
     }
   }
 
-  async function handleCreateSession() {
-    const fresh = createEmptySession(defaultModel);
-    // Optimistic UI
-    setSessions((prev) => [fresh, ...prev]);
-    setActiveSessionId(fresh.id);
-    setInput("");
-    setErrorText("");
-
+  const handleDocumentPreview = async (docId: string) => {
+    setPreviewDocId(docId);
+    setPreviewDocData(null);
     try {
-      const resp = await fetch(`${apiBaseUrl}/api/sessions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: fresh.title,
-          model: fresh.model,
-          transport: fresh.transport,
-          workflowMode: fresh.workflowMode,
-        }),
-      });
+      const resp = await fetch(`${apiBaseUrl}/api/documents/${docId}`);
       const data = await resp.json();
-      if (data.success && data.session) {
-        // Update the optimistic ID with the server ID
-        setSessions((prev) => prev.map(s => s.id === fresh.id ? { ...s, id: data.session.id } : s));
-        setActiveSessionId(data.session.id);
-      }
+      if (data.success) setPreviewDocData(data.item);
     } catch (e) {
-      console.error("Failed to create session on server", e);
-    }
-  }
-
-  async function handleDuplicateSession(sessionId: string) {
-    try {
-      const resp = await fetch(`${apiBaseUrl}/api/sessions/${sessionId}/duplicate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await resp.json();
-      if (data.success && data.session) {
-        setSessions(prev => [data.session, ...prev]);
-        setActiveSessionId(data.session.id);
-        addNotification("Session duplicated", "success");
-      }
-    } catch (e) {
-      addNotification("Failed to duplicate session", "error");
-    }
-  }
-
-  async function handleDeleteSession(sessionId: string) {
-    if (confirmDeleteId !== sessionId) {
-      setConfirmDeleteId(sessionId);
-      return;
-    }
-    
-    if (editingSessionId === sessionId) {
-      cancelRenameSession();
-    }
-
-    const targetSessionId = sessionId;
-    
-    // UI state first (optimistic removal)
-    setSessions((prev) => {
-      const next = prev.filter((session) => session.id !== targetSessionId);
-      if (next.length === 0) {
-        const fallback = createEmptySession(defaultModel);
-        setActiveSessionId(fallback.id);
-        return [fallback];
-      }
-      if (activeSessionId === targetSessionId) {
-        setActiveSessionId(next[0].id);
-      }
-      return next;
-    });
-
-    setConfirmDeleteId("");
-
-    try {
-      await fetch(`${apiBaseUrl}/api/sessions/${targetSessionId}`, { method: "DELETE" });
-    } catch (e) {
-      console.error("Failed to delete session on server", e);
-    }
-  }
-
-
-  async function refreshDevStatus() {
-    try {
-      const response = await fetch(`${apiBaseUrl}/dev/status`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
-        },
-      });
-
-      const data = (await response.json()) as DevStatusResponse;
-      if (!response.ok) {
-        throw new Error(data?.error || `Status request failed (${response.status})`);
-      }
-
-      setDevStatus(data.controls || null);
-      setDevErrorText("");
-    } catch (error) {
-      setDevErrorText(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  async function handleDevControl(action: "start" | "stop") {
-    try {
-      setIsDevActionLoading(true);
-
-      const response = await fetch(`${apiBaseUrl}/dev/${action}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
-        },
-      });
-
-      const data = (await response.json()) as DevStatusResponse;
-      if (!response.ok) {
-        throw new Error(data?.error || `${action} request failed (${response.status})`);
-      }
-
-      setDevStatus(data.controls || null);
-      setDevErrorText("");
-    } catch (error) {
-      setDevErrorText(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsDevActionLoading(false);
-    }
-  }
-
-  function updateActiveSessionField<K extends keyof Session>(field: K, value: Session[K]) {
-    if (!activeSession) return;
-    patchSession(activeSession.id, (session) => ({
-      ...session,
-      [field]: value,
-      updatedAt: new Date().toISOString(),
-    }));
-  }
-
-  // Handle scroll events to detect if user is near bottom
-  const handleSendComparison = async (message: string) => {
-    if (!activeSession) return;
-    setIsComparisonSending(true);
-    const tempId = uid("msg");
-    const newMsg: Message = {
-      id: tempId,
-      sessionId: activeSession.id,
-      role: "assistant",
-      content: "",
-      model: comparisonModel,
-      createdAt: new Date().toISOString(),
-    };
-    setComparisonMessages((prev) => [...prev, newMsg]);
-
-    try {
-      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          sessionId: activeSession.id,
-          workflowMode: activeSession.workflowMode,
-          modelSelection: "manual",
-          model: comparisonModel,
-          transport: "stream",
-        }),
-      });
-
-      if (!resp.ok || !resp.body) throw new Error("Comparison request failed");
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        full += chunk;
-        setComparisonMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, content: full } : m))
-        );
-      }
-    } catch (e) {
-      addNotification("Comparison model failed", "error");
-    } finally {
-      setIsComparisonSending(false);
+      addNotification("Preview failed", "error");
     }
   };
+
+  // --- Chat Logic ---
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
@@ -901,229 +512,199 @@ export default function ChatClient() {
     setShouldAutoScroll(isAtBottom);
   };
 
-  // Smart auto-scroll effect
   useEffect(() => {
     if (shouldAutoScroll && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [activeSession?.messages, shouldAutoScroll]);
 
+  const handleSendComparison = async (message: string) => {
+    if (!activeSession) return;
+    setIsComparisonSending(true);
+    const tempId = uid("msg");
+    const newMsg: Message = { id: tempId, sessionId: activeSession.id as any, role: "assistant", content: "", model: comparisonModel, createdAt: new Date().toISOString() };
+    setComparisonMessages((prev) => [...prev, newMsg]);
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, sessionId: activeSession.id, workflowMode: activeSession.workflowMode, modelSelection: "manual", model: comparisonModel, transport: "stream" }),
+      });
+      if (!resp.ok || !resp.body) throw new Error("Comparison request failed");
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let full = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value);
+        setComparisonMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: full } : m)));
+      }
+    } catch (e) {
+      addNotification("Comparison model failed", "error");
+    } finally {
+      setIsComparisonSending(false);
+    }
+  };
+
   async function handleSend() {
     if (!activeSession || !input.trim() || isSending) return;
-
     const userText = input.trim();
-    if (isComparisonMode) {
-      handleSendComparison(userText);
-    }
+    if (isComparisonMode) handleSendComparison(userText);
     const now = new Date().toISOString();
-    const userMessage: Message = {
-      id: uid("user"),
-      role: "user",
-      content: userText,
-      createdAt: now,
-      model: activeSession.model,
-      modelSelection: activeSession.modelSelection,
-      transport: activeSession.transport,
-    };
-
+    const userMessage: Message = { id: uid("user"), role: "user", content: userText, createdAt: now, model: activeSession.model, modelSelection: activeSession.modelSelection, transport: activeSession.transport };
     const assistantId = uid("assistant");
-    const assistantMessage: Message = {
-      id: assistantId,
-      role: "assistant",
-      content: "",
-      createdAt: now,
-      model: activeSession.model,
-      modelSelection: activeSession.modelSelection,
-      transport: activeSession.transport,
-    };
-
+    const assistantMessage: Message = { id: assistantId, role: "assistant", content: "", createdAt: now, model: activeSession.model, modelSelection: activeSession.modelSelection, transport: activeSession.transport };
     patchSession(activeSession.id, (session) => ({
       ...session,
       title: session.messages.length === 0 ? formatTitle(userText) : session.title,
       updatedAt: now,
       messages: [...session.messages, userMessage, assistantMessage],
     }));
-
     setInput("");
     setErrorText("");
     setIsSending(true);
-    setShouldAutoScroll(true); // Always scroll on new user message
+    setShouldAutoScroll(true);
 
-    // Sync User Message to DB
+    // Sync User Msg
     fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        role: "user",
-        content: userText,
-        model: userMessage.model,
-        transport: userMessage.transport,
-        modelSelection: userMessage.modelSelection,
-      }),
-    }).catch(e => console.error("Failed to sync user message", e));
+      body: JSON.stringify({ role: "user", content: userText, model: userMessage.model, transport: userMessage.transport, modelSelection: userMessage.modelSelection }),
+    }).catch(e => console.error("Sync user failed"));
 
     try {
-      const conversation = activeSession.messages
-        .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`)
-        .join("\n\n");
-
-      const prompt = conversation
-        ? `${conversation}\n\nUser: ${userText}\n\nAssistant:`
-        : userText;
-
-      const payload = {
-        message: prompt,
-        mode: activeSession.workflowMode,
-        model: activeSession.model,
-        modelSelection: activeSession.modelSelection,
-        sessionId: activeSession.id,
-      };
+      const prompt = activeSession.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n") + (activeSession.messages.length > 0 ? "\n\n" : "") + `User: ${userText}\n\nAssistant:`;
+      const payload = { message: prompt, mode: activeSession.workflowMode, model: activeSession.model, modelSelection: activeSession.modelSelection, sessionId: activeSession.id };
 
       if (activeSession.transport === "stream") {
-        const response = await fetch(`${apiBaseUrl}/runs/stream`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok || !response.body) {
-          const text = await response.text();
-          throw new Error(text || `Stream request failed (${response.status})`);
-        }
-
+        const response = await fetch(`${apiBaseUrl}/runs/stream`, { method: "POST", headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, body: JSON.stringify(payload) });
+        if (!response.ok || !response.body) throw new Error("Stream failed");
+        
         const modelFromHeader = response.headers.get("x-evoflow-model") || activeSession.model;
         const selectionFromHeader = (response.headers.get("x-evoflow-model-selection") as "auto" | "manual" | "default") || activeSession.modelSelection;
-
-        patchSession(activeSession.id, (session) => ({
-          ...session,
-          model: modelFromHeader,
-          modelSelection: selectionFromHeader === "default" ? "manual" : selectionFromHeader,
-        }));
+        patchSession(activeSession.id, (s) => ({ ...s, model: modelFromHeader, modelSelection: selectionFromHeader === "default" ? "manual" : selectionFromHeader }));
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let full = "";
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          full += chunk;
-
+          full += decoder.decode(value, { stream: true });
           patchSession(activeSession.id, (session) => ({
             ...session,
             updatedAt: new Date().toISOString(),
-            messages: session.messages.map((message) =>
-              message.id === assistantId
-                ? {
-                    ...message,
-                    content: full,
-                    model: modelFromHeader,
-                    modelSelection: selectionFromHeader,
-                    transport: "stream",
-                  }
-                : message
-            ),
+            messages: session.messages.map((m) => m.id === assistantId ? { ...m, content: full, model: modelFromHeader, transport: "stream", modelSelection: selectionFromHeader } : m),
           }));
         }
-
-        // Sync Assistant Message to DB (Streaming complete)
-        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "assistant",
-            content: full,
-            model: modelFromHeader,
-            transport: "stream",
-            modelSelection: selectionFromHeader,
-          }),
-        }).catch(e => console.error("Failed to sync assistant message", e));
+        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "assistant", content: full, model: modelFromHeader, transport: "stream", modelSelection: selectionFromHeader }) }).catch(e => console.error("Sync assistant failed"));
       } else {
-        const response = await fetch(`${apiBaseUrl}/runs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        });
-
+        const response = await fetch(`${apiBaseUrl}/runs`, { method: "POST", headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, body: JSON.stringify(payload) });
         const text = await response.text();
-        if (!response.ok) throw new Error(text || `Request failed (${response.status})`);
-
-        let parsed: { finalOutput?: string; model?: string; modelSelection?: string } | null = null;
-        try {
-          parsed = JSON.parse(text) as { finalOutput?: string; model?: string; modelSelection?: string };
-        } catch {
-          parsed = { finalOutput: text };
-        }
-
+        if (!response.ok) throw new Error("Request failed");
+        let parsed: any;
+        try { parsed = JSON.parse(text); } catch { parsed = { finalOutput: text }; }
         const output = parsed?.finalOutput || text;
         const model = parsed?.model || activeSession.model;
-        const selection = (parsed?.modelSelection as "auto" | "manual" | "default" | undefined) || activeSession.modelSelection;
-
-        patchSession(activeSession.id, (session) => ({
-          ...session,
-          model,
-          modelSelection: selection === "default" ? "manual" : selection,
-          updatedAt: new Date().toISOString(),
-          messages: session.messages.map((message) =>
-            message.id === assistantId
-              ? {
-                  ...message,
-                  content: output,
-                  model,
-                  modelSelection: selection,
-                  transport: "normal",
-                }
-              : message
-          ),
-        }));
-
-        // Sync Assistant Message to DB (Normal complete)
-        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            role: "assistant",
-            content: output,
-            model,
-            transport: "normal",
-            modelSelection: selection,
-          }),
-        }).catch(e => console.error("Failed to sync assistant message", e));
+        const selection = parsed?.modelSelection || activeSession.modelSelection;
+        patchSession(activeSession.id, (s) => ({ ...s, model, modelSelection: selection === "default" ? "manual" : selection, updatedAt: new Date().toISOString(), messages: s.messages.map(m => m.id === assistantId ? { ...m, content: output, model, transport: "normal", modelSelection: selection } : m) }));
+        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "assistant", content: output, model, transport: "normal", modelSelection: selection }) }).catch(e => console.error("Sync assistant failed"));
       }
     } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      setErrorText(text);
-
-      patchSession(activeSession.id, (session) => ({
-        ...session,
-        updatedAt: new Date().toISOString(),
-        messages: session.messages.map((message) =>
-          message.id === assistantId
-            ? {
-                ...message,
-                content: `[error] ${text}`,
-              }
-            : message
-        ),
-      }));
+      setErrorText(error instanceof Error ? error.message : "Chat failed");
     } finally {
       setIsSending(false);
     }
   }
 
+  // Lifecycle
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      setIsLoadingModels(true);
+      const result = await fetchModels(apiBaseUrl, demoToken);
+      if (!isMounted) return;
+      setModels(result.models);
+      setDefaultModel(result.defaultModel);
+      setComparisonModel(result.defaultModel);
+      try {
+        const resp = await fetch(`${apiBaseUrl}/api/sessions`);
+        const data = await resp.json();
+        if (data.success && Array.isArray(data.items)) {
+          const mapped = data.items.map((s: any) => ({ ...s, messages: s.messages || [], documents: s.documents || [] }));
+          setSessions(mapped);
+          if (mapped.length > 0) setActiveSessionId(mapped[0].id);
+          else {
+            const empty = createEmptySession(result.defaultModel);
+            setSessions([empty]);
+            setActiveSessionId(empty.id);
+          }
+        }
+      } catch (e) { console.error("Initial load failed"); }
+      setIsLoadingModels(false);
+    })();
+    return () => { isMounted = false; };
+  }, [apiBaseUrl, demoToken]);
+
+  useEffect(() => {
+    refreshDevStatus();
+    const t = setInterval(refreshDevStatus, 5000);
+    return () => clearInterval(t);
+  }, [apiBaseUrl, demoToken]);
+
+  // Export/Import Helpers
+  function handleExportChats() {
+    const payload = createExportPayload(sessions);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${EXPORT_FILE_PREFIX}-${new Date().getTime()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const imported = normalizeImportedSessions(JSON.parse(text), defaultModel);
+      if (imported.length > 0) {
+        setSessions(prev => [...imported, ...prev]);
+        setActiveSessionId(imported[0].id);
+      }
+    } catch (e) { setErrorText("Import failed"); }
+  }
+
+  function startRenameSession(id: string, title: string) { setEditingSessionId(id); setEditingTitle(title); }
+  function cancelRenameSession() { setEditingSessionId(""); setEditingTitle(""); }
+  async function handleSaveRename(id: string) {
+    const title = formatTitle(editingTitle.trim());
+    if (!title) return cancelRenameSession();
+    patchSession(id, (s) => ({ ...s, title, updatedAt: new Date().toISOString() }));
+    cancelRenameSession();
+    try { await fetch(`${apiBaseUrl}/api/sessions/${id}/rename`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) }); } catch (e) {}
+  }
+
+  async function handleDuplicateSession(id: string) {
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${id}/duplicate`, { method: "POST" });
+      const data = await resp.json();
+      if (data.success && data.session) {
+        setSessions(prev => [data.session, ...prev]);
+        setActiveSessionId(data.session.id);
+        addNotification("Session duplicated", "success");
+      }
+    } catch (e) { addNotification("Duplicate failed", "error"); }
+  }
 
   if (isLoadingModels) {
     return (
-      <main style={{ width: "100%", padding: "0", margin: 0, color: ui.text, overflowX: "hidden" }}>
-        <h1 style={{ fontSize: 40, marginBottom: 12 }}>EvoFlow Chat</h1>
-        <div>Loading local Ollama models...</div>
+      <main style={{ width: "100%", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: ui.pageBg, color: ui.text }}>
+        <div style={{ textAlign: "center" }}>
+          <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 16 }}>EvoFlow</h1>
+          <div style={{ opacity: 0.6 }}>Loading system context...</div>
+        </div>
       </main>
     );
   }
@@ -1143,6 +724,7 @@ export default function ChatClient() {
         overflow: "hidden",
       }}
     >
+      {/* --- HEADER --- */}
       <div
         style={{
           zIndex: 100,
@@ -1155,1130 +737,211 @@ export default function ChatClient() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
         }}
       >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2, gap: 14, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.0, letterSpacing: -0.4, margin: 0, color: ui.text }}>EvoFlow Chat</h1>
-            <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
-              <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Dashboard</Link>
-              <Link href="/workflows" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Workflows</Link>
-              <Link href="/chat" style={{ color: ui.text, textDecoration: "none", fontWeight: 700 }}>Chat</Link>
-            </nav>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+              <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>EvoFlow Chat</h1>
+              <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
+                <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Dashboard</Link>
+                <Link href="/chat" style={{ color: ui.text, textDecoration: "none", fontWeight: 700 }}>Chat</Link>
+              </nav>
+            </div>
           </div>
-          <div style={{ color: ui.subtle, marginTop: 4, fontSize: 11, fontWeight: 500, opacity: 0.6 }}>
-            Local Ollama mode · Multi-step & Streaming · Obsidian 2.0
-          </div>
-        </div>
 
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", padding: "4px", borderRadius: 12, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)", border: `1px solid ${ui.panelBorder}` }}>
-          <button
-            type="button"
-            onClick={() => handleDevControl("start")}
-            disabled={isDevActionLoading}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: `1px solid ${ui.controlBorder}`,
-              background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)",
-              color: "#ffffff",
-              cursor: isDevActionLoading ? "not-allowed" : "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {isDevActionLoading ? "Working..." : "Start"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleDevControl("stop")}
-            disabled={isDevActionLoading}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: `1px solid ${ui.controlBorder}`,
-              background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d",
-              color: "#ffffff",
-              cursor: isDevActionLoading ? "not-allowed" : "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {isDevActionLoading ? "Working..." : "Avsluta"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportChats}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: `1px solid ${ui.controlBorder}`,
-              background: ui.actionBg,
-              color: ui.actionText,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Export chats
-          </button>
-
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: `1px solid ${ui.controlBorder}`,
-              background: ui.actionBg,
-              color: ui.actionText,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Import chats
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportMarkdown}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: `1px solid ${ui.controlBorder}`,
-              background: ui.actionBg,
-              color: ui.actionText,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Export to MD
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsComparisonMode(!isComparisonMode)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: isComparisonMode ? `1px solid ${ui.accent}` : `1px solid ${ui.controlBorder}`,
-              background: isComparisonMode ? (isDark ? "rgba(59, 130, 246, 0.2)" : "#eff6ff") : ui.actionBg,
-              color: isComparisonMode ? ui.accent : ui.actionText,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {isComparisonMode ? "Battle Mode: On" : "Battle Mode: Off"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 14,
-              border: `1px solid ${ui.controlBorder}`,
-              background: ui.actionBg,
-              color: ui.actionText,
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            {isDark ? "Light mode" : "Dark mode"}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleCreateSession}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(96,165,250,0.3)",
-              background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
-                      boxShadow: "0 4px 12px rgba(37,99,235,0.2)",
-              color: "#fff",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            New chat
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: "none" }}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (file) await handleImportFile(file);
-              e.currentTarget.value = "";
-            }}
-          />
-
-          <input
-            ref={docInputRef}
-            type="file"
-            accept="application/json,.json,application/pdf,.pdf"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleDocumentUpload(file);
-              e.currentTarget.value = "";
-            }}
-          />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
-            fontSize: 12,
-            color: ui.subtle,
-            width: "100%",
-          }}
-        >
-          {[
-            devStatus?.api ? { key: "api", item: devStatus.api } : null,
-            devStatus?.web ? { key: "web", item: devStatus.web } : null,
-            devStatus?.executor ? { key: "executor", item: devStatus.executor } : null,
-          ]
-            .filter(Boolean)
-            .map((entry) => {
-              const item = entry!.item;
-              return (
-                <div
-                  key={entry!.key}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 999,
-                    border: `1px solid ${item?.running ? "rgba(34,197,94,0.35)" : ui.controlBorder}`,
-                    background: item?.running ? (isDark ? "rgba(22,163,74,0.12)" : "#f0fdf4") : ui.actionBg,
-                    color: item?.running ? (isDark ? "#86efac" : "#166534") : ui.subtle,
-                    fontWeight: 700,
-                  }}
-                  title={
-                    entry!.key === "executor"
-                      ? `Managed process. ${item?.pid ? `PID ${item.pid}. ` : ""}${item?.command || ""}${item?.cwd ? ` in ${item.cwd}` : ""}`
-                      : entry!.key === "web"
-                        ? "Detected from the local web port."
-                        : "This API is running because this page can reach it."
-                  }
-                >
-                  {item?.label}: {item?.running ? "running" : "stopped"}
-                </div>
-              );
-            })}
-
-          <div style={{ color: ui.subtle }}>
-            Start/Avsluta controls the managed background worker. Web/API status is shown read-only so the UI stays available.
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button onClick={() => handleDevControl("start")} style={{ padding: "6px 12px", borderRadius: 10, background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Start</button>
+            <button onClick={() => handleDevControl("stop")} style={{ padding: "6px 12px", borderRadius: 10, background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Avsluta</button>
+            <div style={{ width: 1, height: 20, background: ui.panelBorder, margin: "0 4px" }} />
+            <button onClick={() => setIsComparisonMode(!isComparisonMode)} style={{ padding: "6px 12px", borderRadius: 10, background: isComparisonMode ? ui.accent : ui.actionBg, color: isComparisonMode ? "#fff" : ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isComparisonMode ? "Battle: ON" : "Battle Mode"}</button>
+            <button onClick={() => setTheme(prev => prev === "dark" ? "light" : "dark")} style={{ padding: "6px 12px", borderRadius: 10, background: ui.actionBg, color: ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isDark ? "Light" : "Dark"}</button>
           </div>
         </div>
-
       </div>
-    </div>
 
-      {devErrorText ? (
-        <div
-          style={{
-            marginBottom: 10,
-            padding: "9px 10px",
-            borderRadius: 18,
-            border: "1px solid rgba(248, 113, 113, 0.35)",
-            background: isDark ? "rgba(127, 29, 29, 0.18)" : "#fff1f2",
-            color: isDark ? "#fecaca" : "#991b1b",
-            fontSize: 13,
-          }}
-        >
-          {devErrorText}
-        </div>
-      ) : null}
+      {devErrorText && <div style={{ marginBottom: 10, padding: 10, borderRadius: 12, background: isDark ? "rgba(127,29,29,0.2)" : "#fff1f2", color: "#ef4444", fontSize: 13 }}>{devErrorText}</div>}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "230px minmax(0, 1fr)",
-          gap: 12,
-          flex: 1,
-          alignItems: "stretch",
-          padding: "0 4px 10px 4px",
-          overflow: "hidden",
-        }}
-      >
-        <aside
-          style={{
-            border: `1px solid ${ui.panelBorder}`,
-            borderRadius: 16,
-            background: ui.panelBg,
-            padding: 12,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            backdropFilter: "blur(20px)",
-          }}
-        >
-          <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            Sessions
-            <button 
-              onClick={handleCreateSession}
-              style={{ fontSize: 10, padding: "2px 6px", borderRadius: 6, border: `1px solid ${ui.accent}`, background: "transparent", color: ui.accent, cursor: "pointer", fontWeight: 700 }}
-            >
-              + New
-            </button>
+      {/* --- CONTENT AREA --- */}
+      <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 12, flex: 1, overflow: "hidden", paddingBottom: 10 }}>
+        {/* Sidebar */}
+        <aside style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Sessions</span>
+            <button onClick={handleCreateSession} style={{ padding: "2px 8px", borderRadius: 6, background: ui.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ New</button>
           </div>
           
-          <div style={{ position: "relative", marginBottom: 12 }}>
-            <input 
-              type="text"
-              placeholder="Search chats..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                borderRadius: 12,
-                border: `1px solid ${ui.controlBorder}`,
-                background: ui.controlBg,
-                color: ui.text,
-                fontSize: 12,
-                boxSizing: "border-box",
-                outline: "none",
-              }}
-            />
-          </div>
+          <input type="text" placeholder="Search sessions..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 12, background: ui.controlBg, border: `1px solid ${ui.controlBorder}`, color: ui.text, fontSize: 12, marginBottom: 12, outline: "none" }} />
 
-          <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6, paddingRight: 4 }}>
-            <AnimatePresence initial={false}>
-              {sessions
-                .filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()))
-                .map((session) => (
+          <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6 }}>
+            <AnimatePresence>
+              {sessions.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())).map(session => (
                 <motion.div
                   key={session.id}
-                  onMouseEnter={() => setHoveredSessionId(session.id)}
-                  onMouseLeave={() => setHoveredSessionId("")}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15, ease: "easeOut" }}
-                  layout
-                style={{
-                  border: activeSessionId === session.id ? `1px solid ${ui.accent}` : `1px solid rgba(255,255,255,0.03)`,
-                  borderRadius: 12,
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  position: "relative",
-                  transition: "all 180ms ease",
-                  background: activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.04)" : "#f8fafc") : "transparent",
-                  boxShadow: activeSessionId === session.id ? "0 4px 12px rgba(0,0,0,0.1)" : "none",
-                }}
-              >
-                {editingSessionId === session.id ? (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <input
-                      value={editingTitle}
-                      onChange={(e) => setEditingTitle(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveRename(session.id);
-                        if (e.key === "Escape") cancelRenameSession();
-                      }}
-                      autoFocus
-                      style={{
-                        width: "100%",
-                        padding: "9px 10px",
-                        borderRadius: 14,
-                        border: `1px solid ${ui.controlBorder}`,
-                        background: ui.controlBg,
-                        color: ui.text,
-                        boxSizing: "border-box",
-                      }}
-                    />
-
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveRename(session.id)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: `1px solid ${ui.controlBorder}`,
-                          background: ui.actionBg,
-                          color: ui.actionText,
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Save
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={cancelRenameSession}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: `1px solid ${ui.controlBorder}`,
-                          background: "transparent",
-                          color: ui.subtle,
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setActiveSessionId(session.id)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        cursor: "pointer",
-                        color: ui.text,
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, marginBottom: 2, fontSize: 13, lineHeight: 1.2 }}>{session.title}</div>
-                        <div style={{ fontSize: 10, color: ui.muted, marginTop: 4 }}>
-                          {(session.messages || []).length} messages · {session.modelSelection} · {session.transport}
-                          {session.documents && (session.documents.length || 0) > 0 && (
-                            <span style={{ marginLeft: 6, color: ui.accent, fontWeight: 700 }}>
-                              📎 {session.documents.length}
-                            </span>
-                          )}
-                        </div>
-                    </button>
-
-                    <AnimatePresence>
-                      {(hoveredSessionId === session.id || activeSessionId === session.id || confirmDeleteId === session.id) && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.2 }}
-                          style={{ display: "flex", gap: 6, marginTop: 8, overflow: "hidden" }}
-                        >
-                          {confirmDeleteId === session.id ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteSession(session.id)}
-                                style={{
-                                  flex: 1,
-                                  padding: "6px 10px",
-                                  borderRadius: 10,
-                                  border: "none",
-                                  background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
-                                  color: "#fff",
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  boxShadow: "0 2px 4px rgba(220,38,38,0.2)",
-                                }}
-                              >
-                                Confirm Delete
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId("")}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 10,
-                                  border: `1px solid ${ui.controlBorder}`,
-                                  background: "transparent",
-                                  color: ui.subtle,
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                title="Rename session"
-                                onClick={() => startRenameSession(session.id, session.title)}
-                                style={{
-                                  padding: "5px 10px",
-                                  borderRadius: 10,
-                                  border: `1px solid ${ui.controlBorder}`,
-                                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
-                                  color: ui.text,
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Rename
-                              </button>
-
-                              <button
-                                type="button"
-                                title="Duplicate session"
-                                onClick={() => handleDuplicateSession(session.id)}
-                                style={{
-                                  padding: "5px 10px",
-                                  borderRadius: 10,
-                                  border: `1px solid ${ui.controlBorder}`,
-                                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
-                                  color: ui.text,
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Duplicate
-                              </button>
-
-                              <button
-                                type="button"
-                                title="Delete session"
-                                onClick={() => handleDeleteSession(session.id)}
-                                style={{
-                                  padding: "5px 8px",
-                                  borderRadius: 10,
-                                  border: `1px solid rgba(239, 68, 68, 0.15)`,
-                                  background: "transparent",
-                                  color: isDark ? "rgba(248, 113, 113, 0.8)" : "#ef4444",
-                                  cursor: "pointer",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  marginLeft: "auto",
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </>
-                )}
+                  onClick={() => setActiveSessionId(session.id)}
+                  style={{
+                    padding: "10px",
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    background: activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent",
+                    border: `1px solid ${activeSessionId === session.id ? ui.accent : "transparent"}`,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
+                  <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
 
-          {/* --- SIDEBAR DOCUMENTS SECTION --- */}
-          {activeSession && (
-            <div style={{ marginTop: "auto", paddingTop: 16, borderTop: `1px solid ${ui.panelBorder}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, letterSpacing: 1, textTransform: "uppercase" }}>Files</span>
-                  <span style={{ 
-                    fontSize: 10, 
-                    fontWeight: 800, 
-                    background: isDark ? "rgba(96,165,250,0.15)" : "rgba(37,99,235,0.05)", 
-                    padding: "1px 6px", 
-                    borderRadius: 6,
-                    color: ui.accent 
-                  }}>
-                    {activeSession.documents?.length || 0}
-                  </span>
-                </div>
-                <button 
-                  onClick={() => docInputRef.current?.click()}
-                  style={{ fontSize: 10, fontWeight: 700, background: "transparent", border: "none", color: ui.accent, cursor: "pointer" }}
-                >
-                  + Add
-                </button>
-              </div>
-
-              <div style={{ display: "grid", gap: 4, maxHeight: "200px", overflowY: "auto", paddingRight: 4 }}>
-                <AnimatePresence>
-                  {isUploading && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      style={{ padding: "4px 8px", fontSize: 11, color: ui.accent, fontStyle: "italic" }}
-                    >
-                      Syncing...
-                    </motion.div>
-                  )}
-                  {activeSession.documents && activeSession.documents.length > 0 ? (
-                    activeSession.documents.map((doc) => (
-                      <motion.div 
-                        key={doc.id}
-                        initial={{ opacity: 0, x: -5 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 5 }}
-                        onClick={() => handleDocumentPreview(doc.id)}
-                        style={{ 
-                          display: "flex", 
-                          alignItems: "center", 
-                          gap: 6, 
-                          padding: "6px 8px", 
-                          borderRadius: 8, 
-                          background: isDark ? "rgba(255,255,255,0.02)" : "#fff",
-                          border: `1px solid ${ui.panelBorder}`,
-                          fontSize: 11,
-                          cursor: "pointer",
-                          transition: "border 0.2s"
-                        }}
-                      >
-                        <span style={{ opacity: 0.6 }}>{doc.type.includes("pdf") ? "📕" : "📄"}</span>
-                        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
-                        <button 
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             handleDeleteDocument(doc.id);
-                           }}
-                           style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12, padding: "0 2px", opacity: 0.4 }}
-                        >
-                           ×
-                        </button>
-                      </motion.div>
-                    ))
-                  ) : !isUploading && (
-                    <div 
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file) handleDocumentUpload(file);
-                      }}
-                      style={{ 
-                        border: `1px dashed ${ui.panelBorder}`, 
-                        borderRadius: 10, 
-                        padding: "12px 8px", 
-                        textAlign: "center", 
-                        fontSize: 10, 
-                        color: ui.muted,
-                        background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"
-                      }}
-                    >
-                      Drop files here
-                    </div>
-                  )}
-                </AnimatePresence>
-              </div>
+          {/* Files section in sidebar */}
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${ui.panelBorder}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Context</span>
+              <button onClick={() => docInputRef.current?.click()} style={{ fontSize: 10, color: ui.accent, background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
             </div>
-          )}
+            <div style={{ display: "grid", gap: 4 }}>
+              {activeSession?.documents?.map(doc => (
+                <div key={doc.id} onClick={() => handleDocumentPreview(doc.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderRadius: 8, background: isDark ? "rgba(255,255,255,0.02)" : "#fff", border: `1px solid ${ui.panelBorder}`, fontSize: 11, cursor: "pointer" }}>
+                  <span style={{ opacity: 0.6 }}>📄</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
+                  <button onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12 }}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </aside>
 
-        <section
-          style={{
-            border: `1px solid ${ui.panelBorder}`,
-            borderRadius: 16,
-            background: ui.panelBg,
-            boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
-            display: "grid",
-            gridTemplateColumns: isComparisonMode ? "1fr 1fr" : "1fr",
-            gap: isComparisonMode ? 12 : 0,
-            overflow: "hidden",
-            padding: 12,
-          }}
-        >
-          {activeSession ? (
+        {/* Main Chat Area */}
+        <section style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+          {activeSession && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, width: "100%", marginBottom: 12 }}>
-                <div>
-                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Mode</label>
-                  <select
-                    value={activeSession.workflowMode}
-                    onChange={(e) => updateActiveSessionField("workflowMode", e.target.value as "direct" | "multi-step")}
-                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
-                  >
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="direct">Direct</option>
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="multi-step">Multi-step</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Model selection</label>
-                  <select
-                    value={activeSession.modelSelection}
-                    onChange={(e) => updateActiveSessionField("modelSelection", e.target.value as "auto" | "manual")}
-                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
-                  >
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="auto">Auto</option>
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="manual">Manual</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Model</label>
-                  <select
-                    value={activeSession.model}
-                    onChange={(e) => updateActiveSessionField("model", e.target.value)}
-                    disabled={activeSession.modelSelection === "auto"}
-                    style={{
-                      width: "100%",
-                      height: 36,
-                      padding: "0 10px",
-                      borderRadius: 8,
-                      border: `1px solid ${ui.controlBorder}`,
-                      background: activeSession.modelSelection === "auto" ? (isDark ? "rgba(15,23,42,0.3)" : "#f2f4f7") : (isDark ? "rgba(10,18,34,0.4)" : "transparent"),
-                      color: ui.text,
-                      fontSize: 13,
-                      outline: "none",
-                    }}
-                  >
-                    {models.map((model) => (
-                      <option key={model} style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value={model}>{model}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", marginBottom: 5, fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.8 }}>Response mode</label>
-                  <select
-                    value={activeSession.transport}
-                    onChange={(e) => updateActiveSessionField("transport", e.target.value as "normal" | "stream")}
-                    style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: isDark ? "rgba(10,18,34,0.4)" : "transparent", color: ui.text, fontSize: 13, outline: "none" }}
-                  >
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="stream">Streaming</option>
-                    <option style={{ background: isDark ? "#0f172a" : "#fff", color: ui.text }} value="normal">Normal</option>
-                  </select>
-                </div>
+              {/* Toolbar */}
+              <div style={{ padding: "8px 16px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 12, background: isDark ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.02)" }}>
+                <select value={activeSession.workflowMode} onChange={e => updateActiveSessionField("workflowMode", e.target.value as any)} style={{ background: "none", border: "none", color: ui.subtle, fontSize: 11, fontWeight: 700, outline: "none", cursor: "pointer" }}>
+                  <option value="direct">DIRECT MODE</option>
+                  <option value="multi-step">MULTI-STEP MODE</option>
+                </select>
+                <div style={{ width: 1, height: 12, background: ui.panelBorder, alignSelf: "center" }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: ui.subtle }}>{activeSession.model}</span>
               </div>
 
-              <div style={{ display: "flex", flex: 1, gap: isComparisonMode ? 12 : 0, overflow: "hidden" }}>
-                <div
-                  ref={scrollContainerRef}
-                  onScroll={handleScroll}
-                  style={{
-                    flex: 1,
-                    border: `1px solid ${ui.panelBorder}`,
-                    borderRadius: 16,
-                    padding: "16px 16px 100px 16px",
-                    background: ui.chatCanvas,
-                    overflowY: "auto",
-                    overflowX: "hidden",
-                    boxShadow: isDark ? "inset 0 2px 8px rgba(0,0,0,0.2)" : "inset 0 2px 4px rgba(0,0,0,0.02)",
-                    scrollBehavior: "smooth",
-                    position: "relative"
-                  }}
-                >
-                {activeSession.messages.length === 0 ? (
-                  <div style={{ color: ui.subtle, maxWidth: 720, lineHeight: 1.8, padding: 8 }}>
-                    Start the conversation. Example:
-                    <br />
-                    <br />
-                    <strong>Direct:</strong> Respond with exactly one word: KIWI
-                    <br />
-                    <strong>Multi-step:</strong> Write a short haiku about rain.
-                    <br />
-                    <strong>Agent view:</strong> Frontend now recognizes labels like <code>[planner]</code> and <code>[executor]</code> if your backend starts returning them later.
+              {/* Messages Container */}
+              <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+                <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas }}>
+                  <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gap: 16 }}>
+                    {activeSession.messages.length === 0 ? (
+                      <div style={{ textAlign: "center", marginTop: 100, opacity: 0.4 }}>
+                        <div style={{ fontSize: 40, marginBottom: 16 }}>💬</div>
+                        <div style={{ fontWeight: 700 }}>Start a new conversation</div>
+                        <div style={{ fontSize: 13, marginTop: 8 }}>EvoFlow is ready to assist you locally.</div>
+                      </div>
+                    ) : (
+                      <AnimatePresence initial={false}>
+                        {activeSession.messages.map((message, idx) => {
+                          const isStreaming = isSending && message.role === "assistant" && idx === activeSession.messages.length - 1;
+                          return (
+                            <motion.div
+                              key={message.id}
+                              onMouseEnter={() => setHoveredMessageId(message.id)}
+                              onMouseLeave={() => setHoveredMessageId("")}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              style={{ display: "flex", justifyContent: message.role === "user" ? "flex-end" : "flex-start", position: "relative" }}
+                            >
+                              <div style={{
+                                maxWidth: "85%",
+                                padding: "12px 16px",
+                                borderRadius: 16,
+                                background: message.role === "user" ? "#2563eb" : ui.assistantBubble,
+                                color: message.role === "user" ? "#fff" : ui.text,
+                                border: `1px solid ${message.role === "user" ? "rgba(255,255,255,0.1)" : ui.assistantBorder}`,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                                position: "relative"
+                              }}>
+                                {/* Message Toolbar */}
+                                <AnimatePresence>
+                                  {hoveredMessageId === message.id && (
+                                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} style={{ position: "absolute", top: -30, right: 0, display: "flex", gap: 4, background: ui.panelBg, border: `1px solid ${ui.panelBorder}`, padding: 2, borderRadius: 8, zIndex: 10 }}>
+                                      <button onClick={() => handleDeleteMessage(message.id)} style={{ background: "none", border: "none", color: "#ef4444", padding: 4, cursor: "pointer" }}><Trash2 size={13} /></button>
+                                      <button onClick={() => copyWholeMessage(message.content)} style={{ background: "none", border: "none", color: ui.accent, padding: 4, cursor: "pointer" }}><Copy size={13} /></button>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+
+                                <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{message.role === "user" ? "You" : "EvoFlow"}</div>
+                                <RichMessageContent content={message.content} isStreaming={isStreaming} isDark={isDark} ui={ui} />
+                                <div style={{ fontSize: 9, opacity: 0.4, marginTop: 8, textAlign: "right" }}>{message.model || activeSession.model}</div>
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </AnimatePresence>
+                    )}
                   </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <AnimatePresence initial={false}>
-                      {activeSession.messages.map((message, idx) => {
-                      const isFirstInGroup = idx === 0 || activeSession.messages[idx - 1].role !== message.role;
-                      const agent = message.role === "assistant" ? getAgentPresentation(detectAgentRole(message.content)) : null;
-                      const isStreaming = isSending && message.role === "assistant" && idx === activeSession.messages.length - 1;
-
-                      return (
-                        <motion.div
-                          key={message.id}
-                          initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ 
-                            type: "spring",
-                            stiffness: 350,
-                            damping: 30,
-                            mass: 0.8
-                          }}
-                          style={{
-                            display: "flex",
-                            justifyContent: message.role === "user" ? "flex-end" : "flex-start",
-                            marginTop: isFirstInGroup ? 6 : -2, // Smoother stacking
-                          }}
-                        >
-                          <div
-                            style={{
-                              maxWidth: "85%",
-                              padding: "8px 12px",
-                              borderRadius: 12,
-                              background: message.role === "user" ? (isDark ? "#2563eb" : "#3b82f6") : ui.assistantBubble,
-                              color: message.role === "user" ? "#fff" : ui.text,
-                              border: `1px solid ${message.role === "user" ? "rgba(255,255,255,0.1)" : ui.assistantBorder}`,
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                              position: "relative",
-                            }}
-                          >
-                            {isFirstInGroup && (
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  {/* Role Avatar/Badge */}
-                                  <div
-                                    style={{
-                                      width: 20,
-                                      height: 20,
-                                      borderRadius: "50%",
-                                      background: message.role === "user" ? "linear-gradient(135deg, #3b82f6, #2563eb)" : "linear-gradient(135deg, #475467, #1e293b)",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontSize: 9,
-                                      fontWeight: 800,
-                                      color: "#fff",
-                                      boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-                                    }}
-                                  >
-                                    {message.role === "user" ? "U" : "AI"}
-                                  </div>
-                                  
-                                  <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 700, letterSpacing: 0.3, textTransform: "uppercase" }}>
-                                    {message.role === "user" ? "You" : "EvoFlow AI"}
-                                  </div>
-
-                                  {message.role === "assistant" && agentViewEnabled && agent ? (
-                                    <span
-                                      style={{
-                                        padding: "3px 8px",
-                                        borderRadius: 999,
-                                        fontSize: 9.5,
-                                        fontWeight: 800,
-                                        letterSpacing: 0.2,
-                                        background: isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.04)",
-                                        color: agent.accent,
-                                        border: `1px solid ${agent.accent}33`,
-                                      }}
-                                    >
-                                      {agent.label}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                            )}
-
-                                {message.role === "assistant" && activeSession.documents && activeSession.documents.length > 0 && (
-                                  <div style={{ fontSize: 10, color: ui.accent, fontWeight: 700, marginBottom: 4 }}>
-                                    📎 Using Document Context
-                                  </div>
-                                )}
-                                <RichMessageContent
-                              content={message.content}
-                              isStreaming={isStreaming}
-                            />
-
-                            {/* Streaming Indicator */}
-                            {isStreaming && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, opacity: 0.8 }}>
-                                <div style={{ display: "flex", gap: 3 }}>
-                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite" }} />
-                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite 0.2s" }} />
-                                  <div style={{ width: 4, height: 4, borderRadius: "50%", background: ui.accent, animation: "pulse 1.5s infinite 0.4s" }} />
-                                </div>
-                                <span style={{ fontSize: 10, fontWeight: 700, color: ui.accent, letterSpacing: 0.5, textTransform: "uppercase" }}>
-                                  AI is thinking...
-                                </span>
-                              </div>
-                            )}
-
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, opacity: 0.5 }}>
-                              <div style={{ fontSize: 10 }}>
-                                {message.model ? `${message.model} · ` : ""}{message.transport || activeSession.transport}
-                              </div>
-                              
-                              {message.role === "assistant" && (
-                                <button
-                                  type="button"
-                                  onClick={() => copyWholeMessage(message.content)}
-                                  style={{
-                                    padding: "3px 8px",
-                                    borderRadius: 6,
-                                    border: `1px solid ${ui.panelBorder}`,
-                                    background: "rgba(255,255,255,0.03)",
-                                    color: ui.subtle,
-                                    cursor: "pointer",
-                                    fontSize: 10,
-                                    fontWeight: 600,
-                                    marginTop: 4,
-                                  }}
-                                >
-                                  Copy
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </AnimatePresence>
-                </div>
-              )}
                 </div>
 
-                {/* --- COMPARISON PANE (BATTLE MODE) --- */}
+                {/* Comparison Mode (Battle) */}
                 {isComparisonMode && (
-                  <div
-                    style={{
-                      flex: 1,
-                      border: `1px solid ${ui.panelBorder}`,
-                      borderRadius: 16,
-                      padding: "16px 16px 40px 16px",
-                      background: isDark ? "rgba(0,0,0,0.15)" : "rgba(248,250,252,0.5)",
-                      overflowY: "auto",
-                      maxHeight: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                      position: "relative"
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, position: "sticky", top: 0, background: isDark ? "rgba(30,41,59,0.9)" : "rgba(255,255,255,0.9)", padding: "4px 0", zIndex: 5, backdropFilter: "blur(4px)" }}>
-                      <span style={{ fontSize: 10, fontWeight: 900, color: ui.accent, textTransform: "uppercase", letterSpacing: 1.5 }}>Opponent: {comparisonModel}</span>
-                      <select
-                        value={comparisonModel}
-                        onChange={(e) => setComparisonModel(e.target.value)}
-                        style={{ height: 26, padding: "0 8px", borderRadius: 6, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 11, outline: "none" }}
-                      >
-                        {models.map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
+                  <div style={{ width: 400, borderLeft: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(0,0,0,0.1)" : "#f8fafc", display: "flex", flexDirection: "column" }}>
+                    <div style={{ padding: "12px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 10, fontWeight: 900, color: ui.accent }}>VS: {comparisonModel}</span>
+                      <select value={comparisonModel} onChange={e => setComparisonModel(e.target.value)} style={{ fontSize: 10, background: "none", border: `1px solid ${ui.panelBorder}`, color: ui.text, borderRadius: 4 }}>
+                        {models.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
-
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {comparisonMessages.length === 0 ? (
-                        <div style={{ color: ui.subtle, fontSize: 12, fontStyle: "italic", textAlign: "center", marginTop: 40, padding: 20 }}>
-                          Battle mode active. <br/>Enter a message to see responses from two models side-by-side.
+                    <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "grid", gap: 12 }}>
+                      {comparisonMessages.map(m => (
+                        <div key={m.id} style={{ padding: 10, borderRadius: 12, border: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
+                          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{m.content}</div>
                         </div>
-                      ) : (
-                        comparisonMessages.map((msg) => (
-                          <div key={msg.id} style={{ display: "flex", gap: 10, background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)", padding: 10, borderRadius: 12, border: `1px solid ${ui.panelBorder}` }}>
-                            <div style={{ width: 20, height: 20, borderRadius: 5, background: ui.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, flexShrink: 0 }}>
-                              VS
-                            </div>
-                            <div style={{ flex: 1 }}>
-                               <div style={{ fontSize: 13, lineHeight: 1.6, color: ui.text, whiteSpace: "pre-wrap" }}>{msg.content}</div>
-                               {isComparisonSending && msg.id === comparisonMessages[comparisonMessages.length-1].id && (
-                                 <div style={{ height: 2, background: ui.accent, width: "30%", marginTop: 8, borderRadius: 1, animation: "pulse 1.5s infinite" }} />
-                               )}
-                            </div>
-                          </div>
-                        ))
-                      )}
+                      ))}
                     </div>
                   </div>
                 )}
               </div>
 
-              <div
-                style={{
-                  position: "sticky",
-                  bottom: 0,
-                  marginTop: -40, 
-                  padding: "20px 10px 10px 10px",
-                  background: ui.chatCanvas,
-                  borderTop: `1px solid ${ui.panelBorder}`,
-                  zIndex: 10,
-                }}
-              >
-                {/* --- ATTACHMENT CHIPS UI --- */}
-                {activeSession && activeSession.documents && activeSession.documents.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, padding: "0 4px" }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: ui.accent, textTransform: "uppercase", letterSpacing: 0.5, flexBasis: "100%", marginBottom: 4 }}>
-                      Active Context ({activeSession.documents.length})
+              {/* Input Area */}
+              <div style={{ padding: 20, borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
+                 <div style={{ position: "relative", maxWidth: 900, margin: "0 auto", display: "flex", gap: 10, alignItems: "flex-end" }}>
+                    <div style={{ flex: 1, borderRadius: 16, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, overflow: "hidden" }}>
+                       <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }} placeholder="Ask anything..." style={{ width: "100%", minHeight: 80, maxHeight: 300, padding: 12, border: "none", background: "none", color: ui.text, fontSize: 14, outline: "none", resize: "none" }} />
                     </div>
-                    <AnimatePresence>
-                      {activeSession.documents.map((doc) => (
-                        <motion.div 
-                          key={doc.id}
-                          initial={{ opacity: 0, scale: 0.8, y: 5 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.8, y: 5 }}
-                          onClick={() => handleDocumentPreview(doc.id)}
-                          style={{ 
-                            display: "flex", 
-                            alignItems: "center", 
-                            gap: 6, 
-                            padding: "4px 10px", 
-                            borderRadius: 10, 
-                            background: isDark ? "rgba(59, 130, 246, 0.15)" : "#eff6ff",
-                            border: `1px solid ${isDark ? "rgba(59, 130, 246, 0.3)" : "#dbeafe"}`,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: ui.accent,
-                            cursor: "pointer"
-                          }}
-                        >
-                          {doc.type.includes("image") || ["png", "jpg", "jpeg", "webp"].includes(doc.type) ? (
-                            <span style={{ fontSize: 12 }}>🖼️</span>
-                          ) : (
-                            <span style={{ opacity: 0.8 }}>📎</span>
-                          )}
-                          <span style={{ maxWidth: 120, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteDocument(doc.id);
-                            }}
-                            style={{ background: "transparent", border: "none", color: ui.accent, cursor: "pointer", fontSize: 13, padding: "0 2px", fontWeight: 900 }}
-                          >
-                            ×
-                          </button>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {errorText ? (
-                  <div
-                    style={{
-                      marginBottom: 4,
-                      padding: 10,
-                      border: "1px solid #f5c2c7",
-                      borderRadius: 18,
-                      background: "#fff5f5",
-                      color: "#b42318",
-                      whiteSpace: "pre-wrap",
-                    }}
-                  >
-                    {errorText}
-                  </div>
-                ) : null}
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "end", padding: "6px", borderRadius: 14, border: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(10,18,34,0.9)" : "#ffffff", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}>
-                  <div>
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder="Write your next message here..."
-                      style={{
-                        width: "100%",
-                        minHeight: 120,
-                        padding: "12px",
-                        borderRadius: 10,
-                        border: `1px solid transparent`,
-                        fontSize: 15,
-                        boxSizing: "border-box",
-                        resize: "vertical",
-                        lineHeight: 1.3,
-                        background: "transparent",
-                        color: ui.text,
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={!input.trim() || isSending}
-                    style={{
-                      padding: "10px 20px",
-                      borderRadius: 10,
-                      border: "none",
-                      background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
-                      boxShadow: "0 4px 12px rgba(37,99,235,0.25)",
-                      color: "#fff",
-                      cursor: !input.trim() || isSending ? "not-allowed" : "pointer",
-                      fontWeight: 700,
-                      minWidth: 100,
-                      height: 48,
-                      opacity: !input.trim() || isSending ? 0.6 : 1,
-                    }}
-                  >
-                    {isSending ? "..." : "Send"}
-                  </button>
-                </div>
+                    <button onClick={handleSend} disabled={!input.trim() || isSending} style={{ width: 48, height: 48, borderRadius: 12, background: ui.accent, color: "#fff", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: !input.trim() || isSending ? 0.5 : 1 }}>
+                       {isSending ? "..." : "↑"}
+                    </button>
+                 </div>
               </div>
             </>
-          ) : null}
+          )}
         </section>
       </div>
-      {/* --- NOTIFICATION TOASTS --- */}
-      <div style={{ position: "fixed", bottom: 20, right: 20, display: "grid", gap: 8, zIndex: 9999 }}>
+
+      {/* Persistence and Inputs */}
+      <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
+      <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleDocumentUpload(f); }} />
+
+      {/* Notifications */}
+      <div style={{ position: "fixed", bottom: 20, right: 20, display: "grid", gap: 8 }}>
         <AnimatePresence>
-          {notifications.map((note) => (
-            <motion.div
-              key={note.id}
-              initial={{ opacity: 0, y: 20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                background: isDark ? "rgba(10, 20, 35, 0.95)" : "#ffffff",
-                border: `1px solid ${note.type === "error" ? "rgba(239, 68, 68, 0.4)" : ui.panelBorder}`,
-                boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
-                color: note.type === "error" ? "#ef4444" : ui.text,
-                fontSize: 13,
-                fontWeight: 600,
-                backdropFilter: "blur(10px)",
-                display: "flex",
-                alignItems: "center",
-                gap: 10
-              }}
-            >
-              <span style={{ 
-                width: 8, 
-                height: 8, 
-                borderRadius: "50%", 
-                background: note.type === "success" ? "#22c55e" : note.type === "error" ? "#ef4444" : ui.accent 
-              }} />
-              {note.message}
-            </motion.div>
+          {notifications.map(n => (
+            <motion.div key={n.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} style={{ padding: "10px 16px", borderRadius: 12, background: n.type === "error" ? "#ef4444" : "#22c55e", color: "#fff", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>{n.message}</motion.div>
           ))}
         </AnimatePresence>
       </div>
 
-      {/* --- DOCUMENT PREVIEW MODAL --- */}
+      {/* Document Preview Modal */}
       <AnimatePresence>
         {previewDocId && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10000, padding: 40 }}
-            onClick={() => setPreviewDocId(null)}
-          >
-            <motion.div 
-              initial={{ scale: 0.95, y: 30 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 30 }}
-              onClick={(e) => e.stopPropagation()}
-              style={{ width: "100%", maxWidth: 1000, maxHeight: "90%", background: ui.panelBg, borderRadius: 24, border: `1px solid ${ui.panelBorder}`, boxShadow: "0 32px 64px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden" }}
-            >
-              <div style={{ padding: "16px 24px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: ui.text }}>{previewDocData?.name || "Loading..."}</h3>
-                  {previewDocData && (
-                    <div style={{ fontSize: 12, color: ui.subtle, marginTop: 4 }}>
-                      {previewDocData.type} · {new Object(previewDocData.content).toString().length} chars · {new Date(previewDocData.createdAt).toLocaleString()}
-                    </div>
-                  )}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
+             <div style={{ width: "90%", maxWidth: 1000, maxH: "90%", background: ui.panelBg, borderRadius: 20, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                <div style={{ padding: 16, borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", justifyContent: "space-between" }}>
+                   <div style={{ fontWeight: 700 }}>{previewDocData?.name || "Document Preview"}</div>
+                   <button onClick={() => setPreviewDocId(null)} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", fontWeight: 700 }}>Close</button>
                 </div>
-                <button onClick={() => setPreviewDocId(null)} style={{ background: ui.actionBg, border: `1px solid ${ui.controlBorder}`, color: ui.text, borderRadius: 12, padding: "8px 12px", cursor: "pointer", fontWeight: 700 }}>Close</button>
-              </div>
-              <div style={{ flex: 1, padding: 24, overflowY: "auto", background: isDark ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.2)" }}>
-                {!previewDocData ? (
-                  <div style={{ textAlign: "center", color: ui.subtle, padding: 40 }}>Loading document content...</div>
-                ) : (
-                  <>
-                    {(previewDocData.type.includes("image") || ["png", "jpg", "jpeg", "webp"].includes(previewDocData.type)) ? (
-                      <div style={{ display: "flex", justifyContent: "center" }}>
-                        <img 
-                          src={`data:image/${previewDocData.type};base64,${previewDocData.content}`} 
-                          alt={previewDocData.name} 
-                          style={{ maxWidth: "100%", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,0.2)" }} 
-                        />
-                      </div>
-                    ) : (
-                      <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: ui.text, fontSize: 13, lineHeight: 1.6, fontFamily: "inherit" }}>
-                        {previewDocData.content}
-                      </pre>
-                    )}
-                  </>
-                )}
-              </div>
-            </motion.div>
+                <div style={{ flex: 1, padding: 20, overflowY: "auto", fontSize: 13, whiteSpace: "pre-wrap" }}>
+                   {previewDocData?.content || "Loading..."}
+                </div>
+             </div>
           </motion.div>
         )}
       </AnimatePresence>
