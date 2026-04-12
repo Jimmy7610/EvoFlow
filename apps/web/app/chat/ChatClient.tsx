@@ -370,6 +370,8 @@ export default function ChatClient() {
   const [devErrorText, setDevErrorText] = useState("");
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [isAborted, setIsAborted] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -433,6 +435,15 @@ export default function ChatClient() {
       [field]: value,
       updatedAt: new Date().toISOString(),
     }));
+  }
+
+  function toggleSessionSelection(id: string) {
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   const activeSession = useMemo(
@@ -785,15 +796,75 @@ export default function ChatClient() {
   }, [apiBaseUrl, demoToken]);
 
   // Export/Import Helpers
-  function handleExportChats() {
-    const payload = createExportPayload(sessions);
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  function convertToMarkdown(sessionsToExport: Session[]): string {
+    return sessionsToExport.map(s => {
+      let md = `# ${s.title}\n\n`;
+      md += `**Date:** ${s.createdAt}\n`;
+      md += `**Model:** ${s.model}\n`;
+      md += `**Messages:** ${s.messages.length}\n\n`;
+      md += `---\n\n`;
+      s.messages.forEach(m => {
+        md += `### ${m.role === "user" ? "YOU" : "EVOFLOW"} (${m.model || s.model})\n\n`;
+        md += `${m.content}\n\n`;
+        md += `*Sent at ${m.createdAt}*\n\n`;
+      });
+      return md;
+    }).join("\n\n---\n\n");
+  }
+
+  async function handleExportChats(format: "json" | "markdown" = "json") {
+    const sessionsToExport = isSelectionMode && selectedSessionIds.size > 0 
+      ? sessions.filter(s => selectedSessionIds.has(s.id))
+      : sessions;
+
+    let content: string;
+    let extension: string;
+    let type: string;
+
+    if (format === "markdown") {
+      content = convertToMarkdown(sessionsToExport);
+      extension = "md";
+      type = "text/markdown";
+    } else {
+      content = JSON.stringify(createExportPayload(sessionsToExport), null, 2);
+      extension = "json";
+      type = "application/json";
+    }
+
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${EXPORT_FILE_PREFIX}-${new Date().getTime()}.json`;
+    a.download = `${EXPORT_FILE_PREFIX}-${new Date().getTime()}.${extension}`;
     a.click();
     URL.revokeObjectURL(url);
+    addNotification(`Exported ${sessionsToExport.length} sessions as ${format.toUpperCase()}`, "success");
+  }
+
+  async function handleBulkDelete() {
+    if (selectedSessionIds.size === 0) return;
+    if (!window.confirm(`Permanently delete ${selectedSessionIds.size} sessions?`)) return;
+
+    const idsToDelete = Array.from(selectedSessionIds);
+    setSessions(prev => prev.filter(s => !selectedSessionIds.has(s.id)));
+    
+    // Fallback active session
+    setSessions(prev => {
+       if (prev.length > 0 && selectedSessionIds.has(activeSessionId)) {
+         setActiveSessionId(prev[0].id);
+       }
+       return prev;
+    });
+
+    setIsSelectionMode(false);
+    setSelectedSessionIds(new Set());
+
+    try {
+      await Promise.all(idsToDelete.map(id => fetch(`${apiBaseUrl}/api/sessions/${id}`, { method: "DELETE" })));
+      addNotification("Bulk delete complete", "success");
+    } catch (e) {
+      addNotification("Some deletions failed", "error");
+    }
   }
 
   async function handleImportFile(file: File) {
@@ -928,7 +999,10 @@ export default function ChatClient() {
         <aside style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Sessions</span>
-            <button onClick={handleCreateSession} style={{ padding: "2px 8px", borderRadius: 6, background: ui.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ New</button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedSessionIds(new Set()); }} style={{ padding: "2px 8px", borderRadius: 6, background: isSelectionMode ? ui.accent : "transparent", color: isSelectionMode ? "#fff" : ui.subtle, border: isSelectionMode ? "none" : `1px solid ${ui.panelBorder}`, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{isSelectionMode ? "Done" : "Manage"}</button>
+              <button onClick={handleCreateSession} style={{ padding: "2px 8px", borderRadius: 6, background: ui.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ New</button>
+            </div>
           </div>
           
           <input type="text" placeholder="Search sessions..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 12, background: ui.controlBg, border: `1px solid ${ui.controlBorder}`, color: ui.text, fontSize: 12, marginBottom: 12, outline: "none" }} />
@@ -938,27 +1012,32 @@ export default function ChatClient() {
               {sessions.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())).map(session => (
                 <motion.div
                   key={session.id}
-                  onClick={() => setActiveSessionId(session.id)}
+                  onClick={() => isSelectionMode ? toggleSessionSelection(session.id) : setActiveSessionId(session.id)}
                   onMouseEnter={() => setHoveredSessionId(session.id)}
                   onMouseLeave={() => setHoveredSessionId("")}
                   style={{
                     padding: "10px",
                     borderRadius: 12,
                     cursor: "pointer",
-                    background: activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent",
-                    border: `1px solid ${activeSessionId === session.id ? ui.accent : "transparent"}`,
+                    background: selectedSessionIds.has(session.id) ? (isDark ? "rgba(96,165,250,0.15)" : "#eff6ff") : (activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent"),
+                    border: `1px solid ${selectedSessionIds.has(session.id) ? ui.accent : (activeSessionId === session.id ? ui.accent : "transparent")}`,
                     transition: "all 0.2s",
                     position: "relative"
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    {isSelectionMode && (
+                      <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${selectedSessionIds.has(session.id) ? ui.accent : ui.panelBorder}`, background: selectedSessionIds.has(session.id) ? ui.accent : "transparent", flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {selectedSessionIds.has(session.id) && <Check size={10} color="#fff" strokeWidth={4} />}
+                      </div>
+                    )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
                       <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
                     </div>
                     
                     <AnimatePresence>
-                      {hoveredSessionId === session.id && (
+                      {!isSelectionMode && hoveredSessionId === session.id && (
                         <motion.button
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
@@ -1003,6 +1082,49 @@ export default function ChatClient() {
               ))}
             </div>
           </div>
+
+          <AnimatePresence>
+            {isSelectionMode && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                style={{
+                  marginTop: "auto",
+                  padding: "12px",
+                  borderRadius: 16,
+                  background: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.5)",
+                  border: `1px solid ${ui.panelBorder}`,
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                }}
+              >
+                <div style={{ fontSize: 10, fontWeight: 900, color: ui.subtle, marginBottom: 10, textAlign: "center", textTransform: "uppercase" }}>Selected: {selectedSessionIds.size}</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <button 
+                    onClick={() => handleExportChats("markdown")}
+                    disabled={selectedSessionIds.size === 0}
+                    style={{ width: "100%", padding: "6px", borderRadius: 8, background: ui.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: selectedSessionIds.size === 0 ? 0.4 : 1 }}
+                  >
+                    Export as MD
+                  </button>
+                  <button 
+                    onClick={() => handleExportChats("json")}
+                    disabled={selectedSessionIds.size === 0}
+                    style={{ width: "100%", padding: "6px", borderRadius: 8, background: ui.actionBg, color: ui.text, border: `1px solid ${ui.panelBorder}`, fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: selectedSessionIds.size === 0 ? 0.4 : 1 }}
+                  >
+                    Export as JSON
+                  </button>
+                  <button 
+                    onClick={handleBulkDelete}
+                    disabled={selectedSessionIds.size === 0}
+                    style={{ width: "100%", padding: "6px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: selectedSessionIds.size === 0 ? 0.4 : 1 }}
+                  >
+                    Delete Selected
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </aside>
 
         {/* Main Chat Area */}
