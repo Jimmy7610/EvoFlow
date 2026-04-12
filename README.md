@@ -4,6 +4,9 @@ Managed Operations Dashboard for Local LLM Workflows and Advanced Chat.
 
 EvoFlow is a powerful monorepo designed to manage local AI operations, featuring a professional-grade dashboard, advanced session-based chat, and a managed background worker system.
 
+> **"Din helt privata, lokala kommandocentral för AI."**  
+> EvoFlow är som att ha en egen ChatGPT på din dator – 100% privat, 100% kontroll. För en djupare genomgång, se [SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md).
+
 ## 🏗 Project Structure
 
 - **`apps/web`**: Next.js frontend with a fixed-viewport dashboard layout, glassmorphic UI, and real-time state management.

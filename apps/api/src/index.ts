@@ -81,6 +81,7 @@ type DevStatusPayload = {
 const app = express();
 const PORT = 4000;
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const LANGUAGE_CONSISTENCY_INSTRUCTION = "IMPORTANT: Always respond in the same language as the user's latest prompt.";
 
 const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
 const EVOFLOW_REPO_ROOT = process.env.EVOFLOW_REPO_ROOT || path.resolve(process.cwd(), "../..");
@@ -390,7 +391,7 @@ async function streamOllama(
   return full.trim();
 }
 
-async function makeDirectOutput(message: string, model: string): Promise<string> {
+async function makeDirectOutput(message: string, model: string, images?: string[]): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -407,7 +408,8 @@ async function makeDirectOutput(message: string, model: string): Promise<string>
     const aiResult = await callOllama(
       prompt,
       model,
-      "You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation."
+      `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      images
     );
 
     if (aiResult) {
@@ -420,7 +422,7 @@ async function makeDirectOutput(message: string, model: string): Promise<string>
   return extractDirectOutput(source);
 }
 
-async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void): Promise<string> {
+async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void, images?: string[]): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -437,8 +439,9 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
     const streamed = await streamOllama(
       prompt,
       model,
-      "You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation.",
-      onChunk
+      `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      onChunk,
+      images
     );
 
     if (streamed) {
@@ -453,7 +456,7 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
   return fallback;
 }
 
-async function makeAgentOutput(message: string, topic: string, model: string): Promise<string> {
+async function makeAgentOutput(message: string, topic: string, model: string, images?: string[]): Promise<string> {
   const lower = message.toLowerCase();
 
   if (topic === "email-validator") {
@@ -491,7 +494,8 @@ async function makeAgentOutput(message: string, topic: string, model: string): P
     const aiResult = await callOllama(
       message,
       model,
-      "You are an assistant inside a local workflow engine. Answer clearly and stay on topic."
+      `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      images
     );
 
     if (aiResult) {
@@ -508,21 +512,22 @@ async function streamAgentOutput(
   message: string,
   topic: string,
   model: string,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
+  images?: string[]
 ): Promise<string> {
   const lower = message.toLowerCase();
 
   if (topic === "email-validator") {
-    const canned = await makeAgentOutput(message, topic, model);
+    const canned = await makeAgentOutput(message, topic, model, images);
     onChunk(canned);
     return canned;
   }
 
   try {
     const streamed = await streamOllama(
-      finalPrompt,
+      message,
       model,
-      "You are an assistant inside a local workflow engine. Answer clearly and stay on topic.",
+      `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
       onChunk,
       images
     );
@@ -786,6 +791,48 @@ app.delete(["/sessions/:id", "/api/sessions/:id"], requireAuth, async (req, res)
   }
 });
 
+app.post(["/sessions/:id/duplicate", "/api/sessions/:id/duplicate"], requireAuth, async (req, res) => {
+  try {
+    const originalId = req.params.id;
+    const original = await prisma.chatSession.findUnique({
+      where: { id: originalId },
+      include: { 
+        messages: { orderBy: { createdAt: "asc" } },
+        documents: true 
+      },
+    });
+
+    if (!original) return res.status(404).json({ success: false, error: "Session not found" });
+
+    const session = await prisma.chatSession.create({
+      data: {
+        title: `${original.title} (Copy)`,
+        model: original.model,
+        transport: original.transport,
+        workflowMode: original.workflowMode,
+        messages: {
+          create: original.messages.map(m => ({
+            role: m.role,
+            content: m.content,
+            model: m.model,
+            modelSelection: m.modelSelection,
+            transport: m.transport,
+            createdAt: m.createdAt,
+          }))
+        }
+      },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+        documents: true
+      }
+    });
+
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, async (req, res) => {
   try {
     const { role, content, model, transport, modelSelection } = req.body;
@@ -834,7 +881,7 @@ app.post(["/sessions/:id/chat", "/api/sessions/:id/chat"], requireAuth, async (r
       await streamOllama(
         fullPrompt,
         selectedModel,
-        "You are an assistant comparing responses. Be brief and objective.",
+        `You are an assistant comparing responses. Be brief and objective. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
         (chunk) => res.write(chunk),
         images
       );
@@ -843,7 +890,7 @@ app.post(["/sessions/:id/chat", "/api/sessions/:id/chat"], requireAuth, async (r
       const output = await callOllama(
         fullPrompt,
         selectedModel,
-        "You are an assistant comparing responses. Be brief and objective.",
+        `You are an assistant comparing responses. Be brief and objective. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
         images
       );
       res.json({ success: true, finalOutput: output, model: selectedModel });
@@ -1029,25 +1076,12 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
     const sessionId = payload.sessionId;
-
-    // Fetch context documents if sessionId exists
-    let docContext = "";
-    if (sessionId) {
-      const documents = await prisma.chatDocument.findMany({
-        where: { sessionId },
-      });
-      if (documents.length > 0) {
-        docContext = "\n\n--- REFERENCE CONTEXT FROM ATTACHED DOCUMENTS ---\n";
-        docContext += documents.map(d => `[Source: ${d.name}]\n${d.content}`).join("\n\n---\n\n");
-        docContext += "\n--- END OF CONTEXT ---\n\n";
-      }
-    }
-
-    const { selectedModel, selectionMode } = await resolveRequestedModel(
+    const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
       useAutoModel,
       message,
-      mode
+      mode,
+      sessionId
     );
 
     const workflow =
@@ -1062,14 +1096,12 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     
     if (docContext) {
       console.log(`[apps/api] Final assembled prompt for AI (first 500 chars):\n${finalPrompt.slice(0, 500)}...`);
-    } else {
-      console.log(`[apps/api] No document context added to this prompt.`);
     }
 
     const finalOutput =
       mode === "direct"
-        ? await makeDirectOutput(finalPrompt, selectedModel)
-        : await makeAgentOutput(finalPrompt, topic, selectedModel);
+        ? await makeDirectOutput(finalPrompt, selectedModel, images)
+        : await makeAgentOutput(finalPrompt, topic, selectedModel, images);
 
     const now = new Date().toISOString();
     const run: RunRecord = {
@@ -1126,25 +1158,12 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
     const sessionId = payload.sessionId;
-
-    // Fetch context documents if sessionId exists
-    let docContext = "";
-    if (sessionId) {
-      const documents = await prisma.chatDocument.findMany({
-        where: { sessionId },
-      });
-      if (documents.length > 0) {
-        docContext = "\n\n--- REFERENCE CONTEXT FROM ATTACHED DOCUMENTS ---\n";
-        docContext += documents.map(d => `[Source: ${d.name}]\n${d.content}`).join("\n\n---\n\n");
-        docContext += "\n--- END OF CONTEXT ---\n\n";
-      }
-    }
-
-    const { selectedModel, selectionMode } = await resolveRequestedModel(
+    const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
       useAutoModel,
       message,
-      mode
+      mode,
+      sessionId
     );
 
     const finalPrompt = docContext ? `${docContext}\nUser Request: ${message}` : message;
@@ -1173,8 +1192,8 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
 
     const streamedOutput =
       mode === "direct"
-        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk)
-        : await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk);
+        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk, images)
+        : await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, images);
 
     const finalOutput = streamedOutput || fullOutput;
     const now = new Date().toISOString();

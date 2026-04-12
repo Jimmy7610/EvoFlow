@@ -16,9 +16,16 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 - [x] **V22: UX Polish**: Message grouping, role-based avatars, and integrated thinking indicators.
 - [x] **V23: Expansion**: Transitioned to full-width constraints (1800px) and wider sidebars for better space utilization.
 - [x] **V24-V25: Dashboard Framework**: Shifted to a **Fixed-Viewport (100vh)** layout. Independent scrollbars for chat and sidebar, eliminating page-level scrolling.
-- [x] **V26: Consolidated Header**: Removed the global white header. Integrated Dashboard, Workflows, and Chat navigation directly into the app header.
 - [x] **V27: Compact Mode**: Significant reduction of whitespace. Tightened margins, gaps, and font sizes. Simplified input bar to maximize chat real estate.
 - [x] **V28: Unified Runner**: Consolidated multiple terminal windows into a single color-coded session using `concurrently`.
+
+### Phase 3: Intelligence & Context (The "Power User" Era)
+- [x] **RAG - Document Flow**: Native support for PDF and text analysis. Integrated document management into the sidebar with session isolation.
+- [x] **Battle Mode**: Side-by-side model comparison allows for benchmarking generation quality in real-time.
+- [x] **Language Consistency**: Enforced cross-model language matching (AI adapts to user prompt language automatically).
+- [x] **Unified Export**: One-click Markdown and JSON export tools for session archiving.
+- [x] **Database Backbone**: Replaced volatile local storage with a robust SQLite/Prisma architecture for persistent histories.
+- [x] **Aesthetic Motion**: Full integration of Framer Motion for premium sidebar transitions and message animations.
 
 ---
 
@@ -31,19 +38,17 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 ## 🔮 Future Backlog (Framtidsplan)
 
 ### 🎨 UI & Aesthetics
-- **Smooth Transitions**: Implement `Framer Motion` for session switching and message entry animations.
 - **Dynamic Theming**: Fine-grained controls for Light/Dark mode with custom accent color pickers.
 - **Glassmorphic Variants**: Add "Frosted Glass" options for different panel depths.
-
-### 🛠 Features & Ux
-- **Image Generation Preview**: Visual feedback area for integrated image generation tasks.
-- **RAG - Document Chat**: Drag-and-drop PDFs/TXT files to index them into the local smart memory.
-- **Multi-Model Comparison**: Side-by-side mode to compare responses from different models (e.g., Llama3 vs Mistral).
-- **Export Power-tools**: Export full session histories to PDF, Markdown, or JSON.
 - **Toast Notifications**: Minimalist popup notifications for API state changes or generation status.
 
+### 🛠 Features & UX
+- **Image Generation Preview**: Visual feedback area for integrated image generation tasks.
+- **Advanced Context Steering**: User-defined focus areas for the RAG engine (e.g., "prioritize code blocks").
+- **Voice-to-Execution**: Direct voice command integration for hands-free local LLM operations.
+
 ### ⚙️ Infrastructure
-- **SQLite Integration**: Replace local storage with a lightweight local database for robust history management.
+- **Custom Model Pointers**: Ability to point to remote Ollama/OpenAI instances per session.
 - **Multi-Node Workers**: Support for distributing LLM tasks across multiple background machines.
 - **API Key Management**: Secure local storage for external API keys (OpenAI, Anthropic) as fallbacks.
 

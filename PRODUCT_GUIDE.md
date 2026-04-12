@@ -84,11 +84,12 @@ Working with local models is fundamentally different from using GPT-4 or Claude 
 ## 7. Current Capabilities
 
 As of the current version, EvoFlow AI Ops supports:
-*   ✅ **Full-width, Fixed-viewport Dashboard**: A professional interface optimized for desktop use.
 *   ✅ **Ollama Integration**: Automated detection of your local model library.
+*   ✅ **Local RAG (Document Flow)**: Drag-and-drop support for PDF/Text analysis per session.
+*   ✅ **Battle Mode**: Side-by-side benchmarking of different LLM models.
 *   ✅ **Advanced Session Management**: Full CRUD operations on your local chat history.
 *   ✅ **Real-time Streaming**: Low-latency visual feedback for all model types.
-*   ✅ **Multi-step Reasoning**: Specialized agent-style workflows for complex queries.
+*   ✅ **Language Consistency**: AI automatically matches the user's input language.
 *   ✅ **Unified Runner**: A single command (`npm run dev`) to start the entire ecosystem.
 
 ---

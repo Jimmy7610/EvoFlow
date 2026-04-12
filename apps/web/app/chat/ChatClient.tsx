@@ -404,6 +404,7 @@ export default function ChatClient() {
   const [errorText, setErrorText] = useState("");
   const [editingSessionId, setEditingSessionId] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [agentViewEnabled, setAgentViewEnabled] = useState(true);
   const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
@@ -539,7 +540,11 @@ export default function ChatClient() {
   }
 
   async function handleSaveRename(sessionId: string) {
-    const nextTitle = formatTitle(editingTitle);
+    const nextTitle = formatTitle(editingTitle.trim());
+    if (!nextTitle) {
+      cancelRenameSession();
+      return;
+    }
     patchSession(sessionId, (session) => ({
       ...session,
       title: nextTitle,
@@ -727,33 +732,56 @@ export default function ChatClient() {
     }
   }
 
+  async function handleDuplicateSession(sessionId: string) {
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${sessionId}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await resp.json();
+      if (data.success && data.session) {
+        setSessions(prev => [data.session, ...prev]);
+        setActiveSessionId(data.session.id);
+        addNotification("Session duplicated", "success");
+      }
+    } catch (e) {
+      addNotification("Failed to duplicate session", "error");
+    }
+  }
+
   async function handleDeleteSession(sessionId: string) {
-    if (!window.confirm("Delete this session?")) return;
+    if (confirmDeleteId !== sessionId) {
+      setConfirmDeleteId(sessionId);
+      return;
+    }
     
     if (editingSessionId === sessionId) {
       cancelRenameSession();
     }
 
-    // Try API first or optimistic
-    try {
-      await fetch(`${apiBaseUrl}/api/sessions/${sessionId}`, { method: "DELETE" });
-    } catch (e) {
-      console.error("Failed to delete session on server", e);
-    }
-
+    const targetSessionId = sessionId;
+    
+    // UI state first (optimistic removal)
     setSessions((prev) => {
-      const next = prev.filter((session) => session.id !== sessionId);
+      const next = prev.filter((session) => session.id !== targetSessionId);
       if (next.length === 0) {
-        // We'll let the user create a new one or auto-create
         const fallback = createEmptySession(defaultModel);
         setActiveSessionId(fallback.id);
         return [fallback];
       }
-      if (activeSessionId === sessionId) {
+      if (activeSessionId === targetSessionId) {
         setActiveSessionId(next[0].id);
       }
       return next;
     });
+
+    setConfirmDeleteId("");
+
+    try {
+      await fetch(`${apiBaseUrl}/api/sessions/${targetSessionId}`, { method: "DELETE" });
+    } catch (e) {
+      console.error("Failed to delete session on server", e);
+    }
   }
 
 
@@ -1283,6 +1311,18 @@ export default function ChatClient() {
               e.currentTarget.value = "";
             }}
           />
+
+          <input
+            ref={docInputRef}
+            type="file"
+            accept="application/json,.json,application/pdf,.pdf"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleDocumentUpload(file);
+              e.currentTarget.value = "";
+            }}
+          />
         </div>
 
         <div
@@ -1333,110 +1373,6 @@ export default function ChatClient() {
           </div>
         </div>
 
-        {/* --- DOCUMENTS SECTION --- */}
-        {activeSession && (
-          <div style={{ marginTop: 24, borderTop: `1px solid ${ui.panelBorder}`, paddingTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, letterSpacing: 1, textTransform: "uppercase" }}>Attached Documents</span>
-                <span style={{ 
-                  fontSize: 10, 
-                  fontWeight: 800, 
-                  background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", 
-                  padding: "1px 6px", 
-                  borderRadius: 6,
-                  color: ui.accent 
-                }}>
-                  {activeSession.documents?.length || 0}
-                </span>
-              </div>
-              <button 
-                onClick={() => docInputRef.current?.click()}
-                style={{ fontSize: 10, fontWeight: 700, background: "transparent", border: "none", color: ui.accent, cursor: "pointer" }}
-              >
-                + Add File
-              </button>
-              <input 
-                ref={docInputRef}
-                type="file"
-                accept=".pdf,.txt,.md"
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleDocumentUpload(file);
-                }}
-              />
-            </div>
-
-            <div style={{ display: "grid", gap: 6 }}>
-              <AnimatePresence>
-                {isUploading && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    style={{ padding: "6px 10px", fontSize: 12, color: ui.accent, fontStyle: "italic", overflow: "hidden" }}
-                  >
-                    Uploading document...
-                  </motion.div>
-                )}
-                {activeSession.documents && activeSession.documents.length > 0 ? (
-                  activeSession.documents.map((doc) => (
-                    <motion.div 
-                      key={doc.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10, height: 0 }}
-                      style={{ 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: 8, 
-                        padding: "6px 10px", 
-                        borderRadius: 8, 
-                        background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.02)",
-                        border: `1px solid ${ui.panelBorder}`,
-                        fontSize: 12,
-                        overflow: "hidden"
-                      }}
-                    >
-                      <span style={{ opacity: 0.6 }}>📄</span>
-                      <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
-                      <span style={{ fontSize: 9, opacity: 0.5, textTransform: "uppercase" }}>{doc.type}</span>
-                      <button 
-                         onClick={() => handleDeleteDocument(doc.id)}
-                         style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, padding: "0 4px", opacity: 0.5 }}
-                      >
-                         ×
-                      </button>
-                    </motion.div>
-                  ))
-                ) : !isUploading && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const file = e.dataTransfer.files?.[0];
-                      if (file) handleDocumentUpload(file);
-                    }}
-                    style={{ 
-                      border: `1px dashed ${ui.panelBorder}`, 
-                      borderRadius: 12, 
-                      padding: "20px 10px", 
-                      textAlign: "center", 
-                      fontSize: 12, 
-                      color: ui.subtle,
-                      background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"
-                    }}
-                  >
-                    Drag & drop PDF/TXT files here to chat with them.
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        )}
       </div>
     </div>
 
@@ -1591,40 +1527,99 @@ export default function ChatClient() {
                         </div>
                     </button>
 
-                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => startRenameSession(session.id, session.title)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 8,
-                          border: `1px solid ${ui.controlBorder}`,
-                          background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
-                          color: ui.text,
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Rename
-                      </button>
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      {confirmDeleteId === session.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSession(session.id)}
+                            style={{
+                              flex: 1,
+                              padding: "6px 10px",
+                              borderRadius: 10,
+                              border: "none",
+                              background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
+                              color: "#fff",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              boxShadow: "0 2px 4px rgba(220,38,38,0.2)",
+                            }}
+                          >
+                            Confirm Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId("")}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 10,
+                              border: `1px solid ${ui.controlBorder}`,
+                              background: "transparent",
+                              color: ui.subtle,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => startRenameSession(session.id, session.title)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 10,
+                              border: `1px solid ${ui.controlBorder}`,
+                              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
+                              color: ui.text,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Rename
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSession(session.id)}
-                        style={{
-                          padding: "5px 10px",
-                          borderRadius: 8,
-                          border: `1px solid rgba(239, 68, 68, 0.2)`,
-                          background: "transparent",
-                          color: "#ef4444",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Delete
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateSession(session.id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 10,
+                              border: `1px solid ${ui.controlBorder}`,
+                              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
+                              color: ui.text,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Duplicate
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSession(session.id)}
+                            style={{
+                              padding: "5px 8px",
+                              borderRadius: 10,
+                              border: `1px solid rgba(239, 68, 68, 0.15)`,
+                              background: "transparent",
+                              color: isDark ? "rgba(248, 113, 113, 0.8)" : "#ef4444",
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              marginLeft: "auto",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -1632,6 +1627,103 @@ export default function ChatClient() {
               ))}
             </AnimatePresence>
           </div>
+
+          {/* --- SIDEBAR DOCUMENTS SECTION --- */}
+          {activeSession && (
+            <div style={{ marginTop: "auto", paddingTop: 16, borderTop: `1px solid ${ui.panelBorder}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, letterSpacing: 1, textTransform: "uppercase" }}>Files</span>
+                  <span style={{ 
+                    fontSize: 10, 
+                    fontWeight: 800, 
+                    background: isDark ? "rgba(96,165,250,0.15)" : "rgba(37,99,235,0.05)", 
+                    padding: "1px 6px", 
+                    borderRadius: 6,
+                    color: ui.accent 
+                  }}>
+                    {activeSession.documents?.length || 0}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => docInputRef.current?.click()}
+                  style={{ fontSize: 10, fontWeight: 700, background: "transparent", border: "none", color: ui.accent, cursor: "pointer" }}
+                >
+                  + Add
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 4, maxHeight: "200px", overflowY: "auto", paddingRight: 4 }}>
+                <AnimatePresence>
+                  {isUploading && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      style={{ padding: "4px 8px", fontSize: 11, color: ui.accent, fontStyle: "italic" }}
+                    >
+                      Syncing...
+                    </motion.div>
+                  )}
+                  {activeSession.documents && activeSession.documents.length > 0 ? (
+                    activeSession.documents.map((doc) => (
+                      <motion.div 
+                        key={doc.id}
+                        initial={{ opacity: 0, x: -5 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 5 }}
+                        onClick={() => handleDocumentPreview(doc.id)}
+                        style={{ 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: 6, 
+                          padding: "6px 8px", 
+                          borderRadius: 8, 
+                          background: isDark ? "rgba(255,255,255,0.02)" : "#fff",
+                          border: `1px solid ${ui.panelBorder}`,
+                          fontSize: 11,
+                          cursor: "pointer",
+                          transition: "border 0.2s"
+                        }}
+                      >
+                        <span style={{ opacity: 0.6 }}>{doc.type.includes("pdf") ? "📕" : "📄"}</span>
+                        <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</span>
+                        <button 
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             handleDeleteDocument(doc.id);
+                           }}
+                           style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12, padding: "0 2px", opacity: 0.4 }}
+                        >
+                           ×
+                        </button>
+                      </motion.div>
+                    ))
+                  ) : !isUploading && (
+                    <div 
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handleDocumentUpload(file);
+                      }}
+                      style={{ 
+                        border: `1px dashed ${ui.panelBorder}`, 
+                        borderRadius: 10, 
+                        padding: "12px 8px", 
+                        textAlign: "center", 
+                        fontSize: 10, 
+                        color: ui.muted,
+                        background: isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"
+                      }}
+                    >
+                      Drop files here
+                    </div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          )}
         </aside>
 
         <section
