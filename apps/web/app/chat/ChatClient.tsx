@@ -60,6 +60,86 @@ type DevStatusResponse = {
 
 const EXPORT_FILE_PREFIX = "evoflow-chats";
 
+const THEMES = {
+  midnight: {
+    name: "Midnight",
+    isDark: true,
+    pageBg: "radial-gradient(circle at top left, rgba(29, 78, 216, 0.15), transparent 30%), radial-gradient(circle at bottom right, rgba(30, 58, 138, 0.1), transparent 30%), linear-gradient(180deg, #020617 0%, #050a1f 100%)",
+    panelBg: "rgba(10, 18, 42, 0.8)",
+    panelBorder: "rgba(30, 64, 175, 0.2)",
+    chatCanvas: "rgba(2, 6, 23, 0.95)",
+    accent: "#3b82f6",
+    text: "#f8fafc",
+    muted: "#94a3b8",
+    subtle: "#64748b",
+    bubbleUser: "linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)",
+    bubbleAssistant: "rgba(15, 23, 42, 0.95)",
+    assistantBorder: "rgba(30, 64, 175, 0.15)",
+  },
+  obsidian: {
+    name: "Obsidian",
+    isDark: true,
+    pageBg: "linear-gradient(180deg, #0f172a 0%, #020617 100%)",
+    panelBg: "rgba(2, 6, 23, 0.85)",
+    panelBorder: "rgba(255, 255, 255, 0.08)",
+    chatCanvas: "#000000",
+    accent: "#94a3b8",
+    text: "#e2e8f0",
+    muted: "#64748b",
+    subtle: "#475569",
+    bubbleUser: "#1e293b",
+    bubbleAssistant: "#0f172a",
+    assistantBorder: "rgba(255, 255, 255, 0.1)",
+  },
+  emerald: {
+    name: "Emerald",
+    isDark: true,
+    pageBg: "radial-gradient(circle at top left, rgba(16, 185, 129, 0.12), transparent 35%), linear-gradient(180deg, #064e3b 0%, #022c22 100%)",
+    panelBg: "rgba(2, 44, 34, 0.82)",
+    panelBorder: "rgba(16, 185, 129, 0.15)",
+    chatCanvas: "rgba(2, 44, 34, 0.95)",
+    accent: "#10b981",
+    text: "#ecfdf5",
+    muted: "#6ee7b7",
+    subtle: "#34d399",
+    bubbleUser: "linear-gradient(135deg, #065f46 0%, #064e3b 100%)",
+    bubbleAssistant: "rgba(6, 78, 59, 0.4)",
+    assistantBorder: "rgba(16, 185, 129, 0.1)",
+  },
+  cyberpunk: {
+    name: "Cyberpunk",
+    isDark: true,
+    pageBg: "radial-gradient(circle at top right, rgba(236, 72, 153, 0.15), transparent 30%), radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.15), transparent 30%), #0d0221",
+    panelBg: "rgba(13, 2, 33, 0.9)",
+    panelBorder: "rgba(236, 72, 153, 0.3)",
+    chatCanvas: "#0d0221",
+    accent: "#ec4899",
+    text: "#fdf2f8",
+    muted: "#d946ef",
+    subtle: "#a855f7",
+    bubbleUser: "linear-gradient(90deg, #ec4899 0%, #8b5cf6 100%)",
+    bubbleAssistant: "rgba(13, 2, 33, 0.95)",
+    assistantBorder: "rgba(236, 72, 153, 0.2)",
+  },
+  light: {
+    name: "Light",
+    isDark: false,
+    pageBg: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+    panelBg: "rgba(255, 255, 255, 0.95)",
+    panelBorder: "#e2e8f0",
+    chatCanvas: "#ffffff",
+    accent: "#2563eb",
+    text: "#0f172a",
+    muted: "#64748b",
+    subtle: "#94a3b8",
+    bubbleUser: "#2563eb",
+    bubbleAssistant: "#f8fafc",
+    assistantBorder: "#e2e8f0",
+  }
+};
+
+type ThemeName = keyof typeof THEMES;
+
 // --- UTILS ---
 async function fetchModels(baseUrl: string, demoToken: string): Promise<{ models: string[]; defaultModel: string }> {
   try {
@@ -160,7 +240,7 @@ function getAgentPresentation(role: string) {
 }
 
 // --- SUB-COMPONENT: RICH MESSAGE CONTENT (DAY 4 UPGRADE) ---
-function RichMessageContent({ content, isStreaming, isDark, ui }: { content: string, isStreaming: boolean, isDark: boolean, ui: any }) {
+function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { content: string, isStreaming: boolean, isDark: boolean, ui: any, fontSize: number }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopyCode = (code: string, id: string) => {
@@ -170,7 +250,7 @@ function RichMessageContent({ content, isStreaming, isDark, ui }: { content: str
   };
 
   return (
-    <div className="prose-container" style={{ fontSize: 14, lineHeight: 1.6, color: "inherit" }}>
+    <div className="prose-container" style={{ fontSize: fontSize, lineHeight: 1.6, color: "inherit" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -274,7 +354,8 @@ export default function ChatClient() {
   const [searchTerm, setSearchTerm] = useState("");
   const [hoveredSessionId, setHoveredSessionId] = useState("");
   const [hoveredMessageId, setHoveredMessageId] = useState("");
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [activeThemeName, setActiveThemeName] = useState<ThemeName>("midnight");
+  const [fontSize, setFontSize] = useState(14);
   const [agentViewEnabled, setAgentViewEnabled] = useState(true);
   const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
   const [isDevActionLoading, setIsDevActionLoading] = useState(false);
@@ -289,6 +370,8 @@ export default function ChatClient() {
   const [devErrorText, setDevErrorText] = useState("");
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [isAborted, setIsAborted] = useState(false);
+  const [hoveredSessionId, setHoveredSessionId] = useState("");
+  const [hoveredMessageId, setHoveredMessageId] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -296,24 +379,26 @@ export default function ChatClient() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const isDark = theme === "dark";
+  const activeTheme = THEMES[activeThemeName];
+  const isDark = activeTheme.isDark;
+
   const ui = {
-    pageBg: isDark ? "radial-gradient(circle at top left, rgba(37,99,235,0.22), transparent 28%), radial-gradient(circle at top right, rgba(124,58,237,0.16), transparent 24%), linear-gradient(180deg, #07111f 0%, #0b1220 52%, #111827 100%)" : "linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)",
-    pageBorder: isDark ? "rgba(148,163,184,0.16)" : "#d8dee8",
-    panelBg: isDark ? "rgba(10,18,34,0.76)" : "rgba(255,255,255,0.94)",
-    panelBorder: isDark ? "rgba(96,165,250,0.16)" : "#d8dee8",
-    text: isDark ? "#f8fafc" : "#101828",
-    muted: isDark ? "#a5b4cf" : "#475467",
-    subtle: isDark ? "#8ea3c5" : "#667085",
-    controlBg: isDark ? "rgba(15,23,42,0.9)" : "#ffffff",
-    controlBorder: isDark ? "rgba(96,165,250,0.16)" : "#d0d5dd",
-    chatCanvas: isDark ? "linear-gradient(180deg, rgba(7,17,31,0.84) 0%, rgba(10,18,34,0.92) 100%)" : "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
-    userBubble: isDark ? "linear-gradient(180deg, #020617 0%, #0f172a 100%)" : "#111827",
-    assistantBubble: isDark ? "rgba(15,23,42,0.94)" : "#ffffff",
-    assistantBorder: isDark ? "rgba(96,165,250,0.14)" : "#e4e7ec",
+    pageBg: activeTheme.pageBg,
+    pageBorder: activeTheme.panelBorder,
+    panelBg: activeTheme.panelBg,
+    panelBorder: activeTheme.panelBorder,
+    text: activeTheme.text,
+    muted: activeTheme.muted,
+    subtle: activeTheme.subtle,
+    controlBg: isDark ? "rgba(15,23,42,0.6)" : "#ffffff",
+    controlBorder: activeTheme.panelBorder,
+    chatCanvas: activeTheme.chatCanvas,
+    userBubble: activeTheme.bubbleUser,
+    assistantBubble: activeTheme.bubbleAssistant,
+    assistantBorder: activeTheme.assistantBorder,
     actionBg: isDark ? "rgba(9,16,30,0.92)" : "#ffffff",
-    actionText: isDark ? "#e2e8f0" : "#101828",
-    accent: "#60a5fa",
+    actionText: activeTheme.text,
+    accent: activeTheme.accent,
   };
 
   // Auto-resize logic
@@ -331,6 +416,11 @@ export default function ChatClient() {
     setTimeout(() => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
     }, 4000);
+  };
+
+  const copyWholeMessage = (text: string) => {
+    navigator.clipboard.writeText(text);
+    addNotification("Copied to clipboard", "success");
   };
 
   // Helper functions
@@ -649,6 +739,12 @@ export default function ChatClient() {
 
   // Lifecycle
   useEffect(() => {
+    // Load preferences
+    const savedTheme = localStorage.getItem("evoflow_theme") as ThemeName;
+    if (savedTheme && THEMES[savedTheme]) setActiveThemeName(savedTheme);
+    const savedSize = localStorage.getItem("evoflow_font_size");
+    if (savedSize) setFontSize(parseInt(savedSize));
+
     let isMounted = true;
     (async () => {
       setIsLoadingModels(true);
@@ -675,6 +771,14 @@ export default function ChatClient() {
     })();
     return () => { isMounted = false; };
   }, [apiBaseUrl, demoToken]);
+
+  useEffect(() => {
+    localStorage.setItem("evoflow_theme", activeThemeName);
+  }, [activeThemeName]);
+
+  useEffect(() => {
+    localStorage.setItem("evoflow_font_size", fontSize.toString());
+  }, [fontSize]);
 
   useEffect(() => {
     refreshDevStatus();
@@ -751,6 +855,7 @@ export default function ChatClient() {
         background: ui.pageBg,
         color: ui.text,
         overflow: "hidden",
+        transition: "background 0.4s ease, color 0.4s ease"
       }}
     >
       {/* --- HEADER --- */}
@@ -777,12 +882,42 @@ export default function ChatClient() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Theme Switcher */}
+            <div style={{ display: "flex", background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: 4, borderRadius: 12, border: `1px solid ${ui.panelBorder}`, marginRight: 6 }}>
+              {(Object.keys(THEMES) as ThemeName[]).map(tName => (
+                <button
+                  key={tName}
+                  onClick={() => setActiveThemeName(tName)}
+                  title={THEMES[tName].name}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 8,
+                    border: activeThemeName === tName ? `2px solid ${ui.accent}` : "none",
+                    background: THEMES[tName].accent,
+                    cursor: "pointer",
+                    margin: "0 2px",
+                    transition: "transform 0.2s",
+                    boxShadow: activeThemeName === tName ? `0 0 8px ${ui.accent}` : "none",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.15)"}
+                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                />
+              ))}
+            </div>
+
+            {/* Font Control */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 10, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: "4px 8px", borderRadius: 10, border: `1px solid ${ui.panelBorder}` }}>
+               <button onClick={() => setFontSize(Math.max(12, fontSize - 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>-</button>
+               <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, width: 14, textAlign: "center" }}>A</span>
+               <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>+</button>
+            </div>
+
             <button onClick={() => handleDevControl("start")} style={{ padding: "6px 12px", borderRadius: 10, background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Start</button>
             <button onClick={() => handleDevControl("stop")} style={{ padding: "6px 12px", borderRadius: 10, background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Avsluta</button>
             <div style={{ width: 1, height: 20, background: ui.panelBorder, margin: "0 4px" }} />
             <button onClick={() => setIsComparisonMode(!isComparisonMode)} style={{ padding: "6px 12px", borderRadius: 10, background: isComparisonMode ? ui.accent : ui.actionBg, color: isComparisonMode ? "#fff" : ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isComparisonMode ? "Battle: ON" : "Battle Mode"}</button>
-            <button onClick={() => setTheme(prev => prev === "dark" ? "light" : "dark")} style={{ padding: "6px 12px", borderRadius: 10, background: ui.actionBg, color: ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isDark ? "Light" : "Dark"}</button>
           </div>
         </div>
       </div>
@@ -898,7 +1033,7 @@ export default function ChatClient() {
                                 </AnimatePresence>
 
                                 <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{message.role === "user" ? "You" : "EvoFlow"}</div>
-                                <RichMessageContent content={message.content} isStreaming={isStreaming} isDark={isDark} ui={ui} />
+                                <RichMessageContent content={message.content} isStreaming={isStreaming} isDark={isDark} ui={ui} fontSize={fontSize} />
                                 <div style={{ fontSize: 9, opacity: 0.4, marginTop: 8, textAlign: "right" }}>{message.model || activeSession.model}</div>
                               </div>
                             </motion.div>

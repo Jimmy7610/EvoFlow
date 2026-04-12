@@ -1,56 +1,73 @@
 # EvoFlow AI Ops 🚀
 
-Managed Operations Dashboard for Local LLM Workflows and Advanced Chat.
+**Managed Operations Dashboard for Local LLM Workflows and Advanced Chat.**
 
-EvoFlow is a powerful monorepo designed to manage local AI operations, featuring a professional-grade dashboard, advanced session-based chat, and a managed background worker system.
+EvoFlow is a powerful, monorepo-based "AI Ops" command center designed for users who want 100% private, high-performance local AI. It transforms local models (via Ollama) into a professional-grade workspace with advanced reasoning and a premium design.
 
 > **"Din helt privata, lokala kommandocentral för AI."**  
-> EvoFlow är som att ha en egen ChatGPT på din dator – 100% privat, 100% kontroll. För en djupare genomgång, se [SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md).
+> EvoFlow är din personliga AI-hubb – 100% kontroll, inga molnavgifter.
 
-## 🏗 Project Structure
+---
 
-- **`apps/web`**: Next.js frontend with a fixed-viewport dashboard layout, glassmorphic UI, and real-time state management.
-- **`apps/api`**: Express backend providing high-performance integration between the UI and local AI workers.
-- **`workers/executor`**: Smart background worker that handles LLM logic, including planning, execution, and review cycles.
+## ✨ 30-Day Transformation Features
 
-## ✨ Key Features
+EvoFlow has recently undergone a major structural and visual transformation to become a "Premium Local AI Product".
 
-- **Advanced Chat Interface**:
-  - **Local Ollama Integration**: Connects directly to local models (llama3, mistral, etc.).
-  - **Multi-step Reasoning**: Transparent agent flow (Planner -> Executor -> Reviewer).
-  - **Smart Memory Retrieval**: Context-aware follow-ups using keyword scoring and task history.
-  - **Session Management**: Rename, delete, and persist local chat history safely.
-  - **Compact Dashboard**: High-density UI (V27) optimized for information-rich operations.
-- **Managed Lifecycle**: Start and stop background services (API/Executor) directly from the web interface.
-- **Premium Aesthetics**: Dark-mode first design with glassmorphism, blur effects, and smooth transitions.
+### 💬 Advanced Chat Experience
+- **Premium Rendering (Day 4)**: Full Markdown support via `react-markdown` and `remark-gfm`. 
+  - **Syntax Highlighting**: Beautiful code blocks with one-click **"COPY"** functionality.
+  - **GFM Tables**: Full support for complex data and alignment.
+  - **Contextual Math & Logic**: Elegant rendering for blockquotes and lists.
+- **Composer Perfection (Day 5)**: 
+  - **Auto-resizing Input**: The textarea grows with your prompts perfectly.
+  - **Stop Generation**: Interrupt AI responses instantly with a dedicated Stop button (`AbortController`).
+  - **Power User Shortcuts**: `Cmd/Ctrl + Enter` to send, `Shift + Enter` for new lines, `Esc` to blur.
+- **Battle Mode (Day 3)**: Compare two different local models side-by-side in real-time.
+
+### 🎨 Theme Ecosystem (Day 6)
+Experience EvoFlow in your favorite environment. All themes are persistent via `localStorage`.
+- **Midnight**: Our signature deep blue/black oculart-safe dark mode.
+- **Emerald**: A refreshing forest-inspired palette with vibrant green accents.
+- **Cyberpunk**: A high-energy neon world of pink and purple.
+- **Obsidian**: A ultra-minimalist slate and monochrome aesthetic.
+- **Light**: A clean, high-contrast professional white mode.
+- **Font Scaling**: Dynamically adjust the text size of the chat history for perfect readability.
+
+### 🧠 Smart Logic & Memory
+- **Multi-step Reasoning**: Transparent agent flow where you see the **Planner**, **Executor**, and **Reviewer** at work.
+- **Attachment Awareness**: Upload `.txt`, `.md`, or `.pdf` files to provide context. Active documents appear as interactive chips in the composer.
+- **Managed Lifecycle**: Control your local background workers (API/Executor) directly from the Dashboard.
+
+---
+
+## 🏗 Monorepo Structure
+
+- **`apps/web`**: Next.js 14 frontend using `framer-motion` for world-class animations.
+- **`apps/api`**: Express.js backbone with Prisma/SQLite for persistent session management.
+- **`workers/executor`**: The "Brain" – handles model orchestration and multi-agent loops.
+
+---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (LTS)
-- [pnpm](https://pnpm.io/)
-- [Ollama](https://ollama.com/) (running locally with `llama3` or `mistral` pulled)
+- [Ollama](https://ollama.com/) (running with `llama3` or `mistral` pulled)
 
-### Installation
+### Quick Start
 ```bash
 # Install dependencies
 pnpm install
 
-# Start development environment
+# Initialize Database
+cd apps/api && npx prisma db push
+
+# Launch the whole system
 pnpm dev
 ```
 
-## 🧠 Smart Memory Configuration
-The executor can be fine-tuned via `.env` in `workers/executor/.env`:
-
-```env
-MEMORY_LOOKBACK_RUNS=12
-MEMORY_MAX_RELEVANT_RUNS=4
-MEMORY_MIN_SCORE=1
-```
-
 ## 🛠 Tech Stack
-- **Frontend**: Next.js, TypeScript, Vanilla CSS (Custom Glassmorphism)
-- **Backend**: Express.js
-- **Intelligence**: Ollama (Local LLMs)
-- **Architecture**: Monorepo with PNPM Workspaces
+- **Languages**: TypeScript (Full Stack)
+- **UI Architecture**: Next.js, Framer Motion, Lucide React
+- **Logic**: Ollama (Local AI), React Markdown
+- **Data**: SQLite + Prisma ORM
