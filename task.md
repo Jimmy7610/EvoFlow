@@ -2,11 +2,11 @@
 
 ## Week 1: Core Premium Pass
 - [x] **Day 1: Full UX Audit**
-    - [x] Review all routes (`/`, `/chat`, `/workflows`)
-    - [x] Identify friction points
-    - [x] Identify upgrade opportunities
-    - [x] Deliver `DAY1_AUDIT.md`
-- [ ] **Day 2: Session System Polish**
+- [x] **Day 2: Session System Polish**
+    - [x] Fix session renaming bug
+    - [x] Implement session duplication (API + UI)
+    - [x] Add 'Safe Delete' confirmation (UI instead of alert)
+    - [x] Verified and pushed to repo
 - [ ] **Day 3: Sidebar Premium Pass**
 - [ ] **Day 4: Chat Message Polish**
 - [ ] **Day 5: Composer Perfection**

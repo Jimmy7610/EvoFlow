@@ -405,6 +405,8 @@ export default function ChatClient() {
   const [editingSessionId, setEditingSessionId] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [hoveredSessionId, setHoveredSessionId] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [agentViewEnabled, setAgentViewEnabled] = useState(true);
   const [devStatus, setDevStatus] = useState<DevStatusResponse["controls"] | null>(null);
@@ -1416,18 +1418,45 @@ export default function ChatClient() {
             backdropFilter: "blur(20px)",
           }}
         >
-          <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
+          <div style={{ fontSize: 13, color: ui.subtle, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             Sessions
+            <button 
+              onClick={handleCreateSession}
+              style={{ fontSize: 10, padding: "2px 6px", borderRadius: 6, border: `1px solid ${ui.accent}`, background: "transparent", color: ui.accent, cursor: "pointer", fontWeight: 700 }}
+            >
+              + New
+            </button>
           </div>
-          <div style={{ fontSize: 12, color: ui.subtle, marginBottom: 4, lineHeight: 1.35 }}>
-            Local sessions stay on this device. Import safely merges chat backups.
+          
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <input 
+              type="text"
+              placeholder="Search chats..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 12px",
+                borderRadius: 12,
+                border: `1px solid ${ui.controlBorder}`,
+                background: ui.controlBg,
+                color: ui.text,
+                fontSize: 12,
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6, paddingRight: 4 }}>
             <AnimatePresence initial={false}>
-              {sessions.map((session) => (
+              {sessions
+                .filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map((session) => (
                 <motion.div
                   key={session.id}
+                  onMouseEnter={() => setHoveredSessionId(session.id)}
+                  onMouseLeave={() => setHoveredSessionId("")}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -10 }}
@@ -1527,100 +1556,113 @@ export default function ChatClient() {
                         </div>
                     </button>
 
-                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      {confirmDeleteId === session.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSession(session.id)}
-                            style={{
-                              flex: 1,
-                              padding: "6px 10px",
-                              borderRadius: 10,
-                              border: "none",
-                              background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
-                              color: "#fff",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              boxShadow: "0 2px 4px rgba(220,38,38,0.2)",
-                            }}
-                          >
-                            Confirm Delete
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId("")}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 10,
-                              border: `1px solid ${ui.controlBorder}`,
-                              background: "transparent",
-                              color: ui.subtle,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => startRenameSession(session.id, session.title)}
-                            style={{
-                              padding: "5px 10px",
-                              borderRadius: 10,
-                              border: `1px solid ${ui.controlBorder}`,
-                              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
-                              color: ui.text,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            Rename
-                          </button>
+                    <AnimatePresence>
+                      {(hoveredSessionId === session.id || activeSessionId === session.id || confirmDeleteId === session.id) && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ display: "flex", gap: 6, marginTop: 8, overflow: "hidden" }}
+                        >
+                          {confirmDeleteId === session.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSession(session.id)}
+                                style={{
+                                  flex: 1,
+                                  padding: "6px 10px",
+                                  borderRadius: 10,
+                                  border: "none",
+                                  background: "linear-gradient(180deg, #ef4444 0%, #dc2626 100%)",
+                                  color: "#fff",
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  boxShadow: "0 2px 4px rgba(220,38,38,0.2)",
+                                }}
+                              >
+                                Confirm Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId("")}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 10,
+                                  border: `1px solid ${ui.controlBorder}`,
+                                  background: "transparent",
+                                  color: ui.subtle,
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                title="Rename session"
+                                onClick={() => startRenameSession(session.id, session.title)}
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: 10,
+                                  border: `1px solid ${ui.controlBorder}`,
+                                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
+                                  color: ui.text,
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Rename
+                              </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDuplicateSession(session.id)}
-                            style={{
-                              padding: "5px 10px",
-                              borderRadius: 10,
-                              border: `1px solid ${ui.controlBorder}`,
-                              background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
-                              color: ui.text,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            Duplicate
-                          </button>
+                              <button
+                                type="button"
+                                title="Duplicate session"
+                                onClick={() => handleDuplicateSession(session.id)}
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: 10,
+                                  border: `1px solid ${ui.controlBorder}`,
+                                  background: isDark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)",
+                                  color: ui.text,
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Duplicate
+                              </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSession(session.id)}
-                            style={{
-                              padding: "5px 8px",
-                              borderRadius: 10,
-                              border: `1px solid rgba(239, 68, 68, 0.15)`,
-                              background: "transparent",
-                              color: isDark ? "rgba(248, 113, 113, 0.8)" : "#ef4444",
-                              cursor: "pointer",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              marginLeft: "auto",
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </>
+                              <button
+                                type="button"
+                                title="Delete session"
+                                onClick={() => handleDeleteSession(session.id)}
+                                style={{
+                                  padding: "5px 8px",
+                                  borderRadius: 10,
+                                  border: `1px solid rgba(239, 68, 68, 0.15)`,
+                                  background: "transparent",
+                                  color: isDark ? "rgba(248, 113, 113, 0.8)" : "#ef4444",
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  marginLeft: "auto",
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </motion.div>
                       )}
-                    </div>
+                    </AnimatePresence>
                   </>
                 )}
                 </motion.div>
