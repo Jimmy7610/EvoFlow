@@ -25,6 +25,13 @@ EvoFlow has recently undergone a major structural and visual transformation to b
 - **Advanced Rendering (Day 4)**: Full GFM support, syntax highlighting, and contextual message actions.
 - **System Reliability (Day 8)**: Real-time Ollama status monitoring and robust error handling for local API disconnections.
 - **Battle Mode (Day 3)**: Compare two different local models side-by-side in real-time.
+- **Persona & Prompt Library (Day 9)**: 
+  - **Dynamic AI Personas**: Switch between specialized roles like **Code Expert**, **Security Lead**, and **Product Architect** instantly.
+  - **Quick Prompt ⚡ Menu**: Access a library of pre-defined templates for common tasks like code reviews, bug fixes, and architecture planning.
+  - **Personalized System Prompts**: Every session can have its own custom instruction set for ultra-tailored AI behavior.
+- **System Engine Status (Day 9)**: 
+  - **Real-time Monitoring**: Integrated dashboard in the sidebar showing the live status of the API, Web, and Executor services.
+  - **Ollama Visibility**: Direct feedback on backend connection and processing states.
 
 ### 📁 Session & Export Power (Day 7)
 Professional-grade tools for high-volume data handling:

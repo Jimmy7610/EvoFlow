@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip } from "lucide-react";
+import SystemStatus from "./SystemStatus";
 
 type Message = {
   id: string;
@@ -59,6 +60,38 @@ type DevStatusResponse = {
 };
 
 const EXPORT_FILE_PREFIX = "evoflow-chats";
+
+const PERSONAS = {
+  general: {
+    name: "General",
+    icon: "🏠",
+    prompt: "You are a helpful and concise AI assistant. Provide clear and accurate answers."
+  },
+  coder: {
+    name: "Code Expert",
+    icon: "💻",
+    prompt: "You are an expert software engineer. Focus on clean code, SOLID principles, design patterns, and efficient algorithms. Always provide explanation alongside code."
+  },
+  security: {
+    name: "Security Lead",
+    icon: "🛡️",
+    prompt: "You are a senior cybersecurity professional. Focus on vulnerability analysis, threat modeling, and secure coding practices. Always highlight potential security risks."
+  },
+  creative: {
+    name: "Architect",
+    icon: "🏛️",
+    prompt: "You are a creative systems architect. Think big picture, focus on scalability, modularity, and innovative problem solving."
+  }
+};
+
+type PersonaKey = keyof typeof PERSONAS;
+
+const PROMPT_TEMPLATES = [
+  { name: "Review Code", prompt: "Please perform a detailed code review of the following snippet. Look for bugs, security issues, and optimization opportunities:" },
+  { name: "Summarize", prompt: "Please summarize the following text into 3 key bullet points:" },
+  { name: "Fix Bug", prompt: "I have a bug in the following code. Please help me identify the cause and provide a fix:" },
+  { name: "Write Test", prompt: "Please write comprehensive unit tests for the following function using a common testing framework:" }
+];
 
 const THEMES = {
   midnight: {
@@ -456,6 +489,8 @@ export default function ChatClient() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
   const [isOllamaOnline, setIsOllamaOnline] = useState(true);
+  const [activePersonaId, setActivePersonaId] = useState<PersonaKey>("general");
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -730,7 +765,15 @@ export default function ChatClient() {
       const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, sessionId: activeSession.id, workflowMode: activeSession.workflowMode, modelSelection: "manual", model: comparisonModel, transport: "stream" }),
+        body: JSON.stringify({ 
+          message, 
+          sessionId: activeSession.id, 
+          workflowMode: activeSession.workflowMode, 
+          modelSelection: "manual", 
+          model: comparisonModel, 
+          transport: "stream",
+          systemPrompt: PERSONAS[activePersonaId].prompt
+        }),
       });
       if (!resp.ok || !resp.body) throw new Error("Comparison request failed");
       const reader = resp.body.getReader();
@@ -777,7 +820,14 @@ export default function ChatClient() {
 
     try {
       const prompt = activeSession.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n") + (activeSession.messages.length > 0 ? "\n\n" : "") + `User: ${userText}\n\nAssistant:`;
-      const payload = { message: prompt, mode: activeSession.workflowMode, model: activeSession.model, modelSelection: activeSession.modelSelection, sessionId: activeSession.id };
+      const payload = { 
+        message: prompt, 
+        mode: activeSession.workflowMode, 
+        model: activeSession.model, 
+        modelSelection: activeSession.modelSelection, 
+        sessionId: activeSession.id,
+        systemPrompt: PERSONAS[activePersonaId].prompt
+      };
 
       if (activeSession.transport === "stream") {
         const response = await fetch(`${apiBaseUrl}/runs/stream`, { 
@@ -1199,7 +1249,11 @@ export default function ChatClient() {
               </motion.div>
             )}
           </AnimatePresence>
-        </aside>
+           {/* System Engine Status (Day 9) */}
+           <div style={{ padding: "0 16px 16px 16px" }}>
+             <SystemStatus apiBaseUrl={apiBaseUrl} />
+           </div>
+         </aside>
 
         {/* Main Chat Area */}
         <section style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
@@ -1293,6 +1347,35 @@ export default function ChatClient() {
               {/* Input Area */}
               <div style={{ padding: "10px 20px 20px 20px", borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
                  <div style={{ maxWidth: 900, margin: "0 auto" }}>
+                    
+                    {/* Persona Selector (Day 9) */}
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                      {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => (
+                        <button
+                          key={key}
+                          onClick={() => setActivePersonaId(key)}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: 100,
+                            background: activePersonaId === key ? ui.accent : "transparent",
+                            color: activePersonaId === key ? "#fff" : ui.subtle,
+                            border: `1px solid ${activePersonaId === key ? ui.accent : ui.panelBorder}`,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                            transition: "all 0.2s"
+                          }}
+                        >
+                          <span>{p.icon}</span>
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+
                     {/* Attachment Chips */}
                     <AnimatePresence>
                       {activeSession.documents && activeSession.documents.length > 0 && (
@@ -1345,7 +1428,7 @@ export default function ChatClient() {
                               width: "100%", 
                               minHeight: 50, 
                               maxHeight: 300, 
-                              padding: "14px 16px", 
+                              padding: "14px 44px 14px 16px", 
                               border: "none", 
                               background: "none", 
                               color: ui.text, 
@@ -1355,6 +1438,78 @@ export default function ChatClient() {
                               resize: "none" 
                             }} 
                           />
+                           {/* Quick Prompts (Day 9) */}
+                           <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 4 }}>
+                             <button
+                               onClick={() => setShowTemplates(!showTemplates)}
+                               style={{
+                                 width: 32,
+                                 height: 32,
+                                 borderRadius: 8,
+                                 background: showTemplates ? ui.accent : "transparent",
+                                 color: showTemplates ? "#fff" : ui.subtle,
+                                 border: "none",
+                                 cursor: "pointer",
+                                 display: "flex",
+                                 alignItems: "center",
+                                 justifyContent: "center",
+                                 transition: "all 0.2s"
+                               }}
+                               title="Quick Prompts"
+                             >
+                               <span style={{ fontSize: 14 }}>?</span>
+                             </button>
+                             <AnimatePresence>
+                               {showTemplates && (
+                                 <motion.div
+                                   initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                   animate={{ opacity: 1, scale: 1, y: 0 }}
+                                   exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                   style={{
+                                     position: "absolute",
+                                     bottom: 40,
+                                     right: 0,
+                                     width: 200,
+                                     background: ui.panelBg,
+                                     border: `1px solid ${ui.panelBorder}`,
+                                     borderRadius: 12,
+                                     boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+                                     padding: 6,
+                                     zIndex: 1000,
+                                     display: "grid",
+                                     gap: 2
+                                   }}
+                                 >
+                                   <div style={{ fontSize: 9, fontWeight: 900, color: ui.subtle, padding: "4px 8px", textTransform: "uppercase" }}>Templates</div>
+                                   {PROMPT_TEMPLATES.map((t, i) => (
+                                     <button
+                                       key={i}
+                                       onClick={() => {
+                                         setInput(prev => prev + (prev.endsWith(" ") || !prev ? "" : " ") + t.prompt);
+                                         setShowTemplates(false);
+                                         textareaRef.current?.focus();
+                                       }}
+                                       style={{
+                                         textAlign: "left",
+                                         padding: "8px 10px",
+                                         borderRadius: 8,
+                                         background: "transparent",
+                                         color: ui.text,
+                                         border: "none",
+                                         fontSize: 12,
+                                         cursor: "pointer",
+                                         transition: "background 0.2s"
+                                       }}
+                                       onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                     >
+                                       {t.name}
+                                     </button>
+                                   ))}
+                                 </motion.div>
+                               )}
+                             </AnimatePresence>
+                           </div>
                        </div>
                        
                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
