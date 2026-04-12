@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
@@ -322,6 +322,89 @@ function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { co
   );
 }
 
+// --- SUB-COMPONENT: SESSION ITEM (DAY 8 PERFORMANCE UPGRADE) ---
+const SessionItem = memo(({ 
+  session, 
+  isActive, 
+  isSelectionMode, 
+  isSelected, 
+  isDark, 
+  ui,
+  confirmDeleteId,
+  hoveredSessionId,
+  setHoveredSessionId,
+  onSelect,
+  onToggle,
+  onDelete
+}: {
+  session: Session,
+  isActive: boolean,
+  isSelectionMode: boolean,
+  isSelected: boolean,
+  isDark: boolean,
+  ui: any,
+  confirmDeleteId: string,
+  hoveredSessionId: string,
+  setHoveredSessionId: (id: string) => void,
+  onSelect: (id: string) => void,
+  onToggle: (id: string) => void,
+  onDelete: (id: string) => void
+}) => {
+  return (
+    <motion.div
+      onClick={() => isSelectionMode ? onToggle(session.id) : onSelect(session.id)}
+      onMouseEnter={() => setHoveredSessionId(session.id)}
+      onMouseLeave={() => setHoveredSessionId("")}
+      style={{
+        padding: "10px",
+        borderRadius: 12,
+        cursor: "pointer",
+        background: isSelected ? (isDark ? "rgba(96,165,250,0.15)" : "#eff6ff") : (isActive ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent"),
+        border: `1px solid ${isSelected ? ui.accent : (isActive ? ui.accent : "transparent")}`,
+        transition: "all 0.2s",
+        position: "relative"
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        {isSelectionMode && (
+          <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${isSelected ? ui.accent : ui.panelBorder}`, background: isSelected ? ui.accent : "transparent", flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {isSelected && <Check size={10} color="#fff" strokeWidth={4} />}
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
+          <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
+        </div>
+        
+        <AnimatePresence>
+          {!isSelectionMode && hoveredSessionId === session.id && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={(e) => { e.stopPropagation(); onDelete(session.id); }}
+              style={{
+                background: confirmDeleteId === session.id ? "#ef4444" : "none",
+                border: "none",
+                color: confirmDeleteId === session.id ? "#fff" : "#ef4444",
+                padding: 4,
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 9,
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center"
+              }}
+            >
+              {confirmDeleteId === session.id ? "SURE?" : <Trash2 size={12} />}
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+});
+
 // --- MAIN COMPONENT ---
 export default function ChatClient() {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000").replace(/\/+$/, "");
@@ -372,6 +455,7 @@ export default function ChatClient() {
   const [isAborted, setIsAborted] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+  const [isOllamaOnline, setIsOllamaOnline] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -620,12 +704,19 @@ export default function ChatClient() {
     if (!scrollContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
-    setShouldAutoScroll(isAtBottom);
+    
+    // Batch the state update using rAF to avoid unnecessary layout work
+    requestAnimationFrame(() => {
+      setShouldAutoScroll(isAtBottom);
+    });
   };
 
   useEffect(() => {
     if (shouldAutoScroll && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      const container = scrollContainerRef.current;
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
   }, [activeSession?.messages, shouldAutoScroll]);
 
@@ -731,7 +822,9 @@ export default function ChatClient() {
       if ((error as Error).name === 'AbortError') {
         console.log("Fetch aborted");
       } else {
-        setErrorText(error instanceof Error ? error.message : "Chat failed");
+        const isConnError = error instanceof TypeError && error.message.includes("fetch");
+        setErrorText(isConnError ? "Connection Lost: EvoFlow API or Ollama is offline." : (error instanceof Error ? error.message : "Chat failed"));
+        if (isConnError) setIsOllamaOnline(false);
       }
     } finally {
       setIsSending(false);
@@ -788,6 +881,18 @@ export default function ChatClient() {
   useEffect(() => {
     localStorage.setItem("evoflow_font_size", fontSize.toString());
   }, [fontSize]);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const r = await fetch(`${apiBaseUrl}/models`);
+        setIsOllamaOnline(r.ok);
+      } catch { setIsOllamaOnline(false); }
+    };
+    checkStatus();
+    const t = setInterval(checkStatus, 15000);
+    return () => clearInterval(t);
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     refreshDevStatus();
@@ -943,7 +1048,13 @@ export default function ChatClient() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>EvoFlow Chat</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>EvoFlow Chat</h1>
+                <div 
+                  title={isOllamaOnline ? "System Online" : "System Offline"} 
+                  style={{ width: 8, height: 8, borderRadius: "50%", background: isOllamaOnline ? "#22c55e" : "#ef4444", boxShadow: isOllamaOnline ? "0 0 8px #22c55e" : "0 0 8px #ef4444", transition: "background 0.3s" }} 
+                />
+              </div>
               <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
                 <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Dashboard</Link>
                 <Link href="/chat" style={{ color: ui.text, textDecoration: "none", fontWeight: 700 }}>Chat</Link>
@@ -1010,58 +1121,21 @@ export default function ChatClient() {
           <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 6 }}>
             <AnimatePresence>
               {sessions.filter(s => s.title.toLowerCase().includes(searchTerm.toLowerCase())).map(session => (
-                <motion.div
+                <SessionItem 
                   key={session.id}
-                  onClick={() => isSelectionMode ? toggleSessionSelection(session.id) : setActiveSessionId(session.id)}
-                  onMouseEnter={() => setHoveredSessionId(session.id)}
-                  onMouseLeave={() => setHoveredSessionId("")}
-                  style={{
-                    padding: "10px",
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    background: selectedSessionIds.has(session.id) ? (isDark ? "rgba(96,165,250,0.15)" : "#eff6ff") : (activeSessionId === session.id ? (isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9") : "transparent"),
-                    border: `1px solid ${selectedSessionIds.has(session.id) ? ui.accent : (activeSessionId === session.id ? ui.accent : "transparent")}`,
-                    transition: "all 0.2s",
-                    position: "relative"
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                    {isSelectionMode && (
-                      <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${selectedSessionIds.has(session.id) ? ui.accent : ui.panelBorder}`, background: selectedSessionIds.has(session.id) ? ui.accent : "transparent", flexShrink: 0, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {selectedSessionIds.has(session.id) && <Check size={10} color="#fff" strokeWidth={4} />}
-                      </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
-                      <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
-                    </div>
-                    
-                    <AnimatePresence>
-                      {!isSelectionMode && hoveredSessionId === session.id && (
-                        <motion.button
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.8 }}
-                          onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
-                          style={{
-                            background: confirmDeleteId === session.id ? "#ef4444" : "none",
-                            border: "none",
-                            color: confirmDeleteId === session.id ? "#fff" : "#ef4444",
-                            padding: 4,
-                            borderRadius: 6,
-                            cursor: "pointer",
-                            fontSize: 9,
-                            fontWeight: 800,
-                            display: "flex",
-                            alignItems: "center"
-                          }}
-                        >
-                          {confirmDeleteId === session.id ? "SURE?" : <Trash2 size={12} />}
-                        </motion.button>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
+                  session={session}
+                  isActive={activeSessionId === session.id}
+                  isSelected={selectedSessionIds.has(session.id)}
+                  isSelectionMode={isSelectionMode}
+                  isDark={isDark}
+                  ui={ui}
+                  confirmDeleteId={confirmDeleteId}
+                  hoveredSessionId={hoveredSessionId}
+                  setHoveredSessionId={setHoveredSessionId}
+                  onSelect={setActiveSessionId}
+                  onToggle={toggleSessionSelection}
+                  onDelete={handleDeleteSession}
+                />
               ))}
             </AnimatePresence>
           </div>
