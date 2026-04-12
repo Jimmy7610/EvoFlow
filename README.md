@@ -22,6 +22,8 @@ EvoFlow has recently undergone a major structural and visual transformation to b
   - **Auto-resizing Input**: The textarea grows with your prompts perfectly.
   - **Stop Generation**: Interrupt AI responses instantly with a dedicated Stop button (`AbortController`).
   - **Power User Shortcuts**: `Cmd/Ctrl + Enter` to send, `Shift + Enter` for new lines, `Esc` to blur.
+- **Advanced Rendering (Day 4)**: Full GFM support, syntax highlighting, and contextual message actions.
+- **System Reliability (Day 8)**: Real-time Ollama status monitoring and robust error handling for local API disconnections.
 - **Battle Mode (Day 3)**: Compare two different local models side-by-side in real-time.
 
 ### 📁 Session & Export Power (Day 7)
