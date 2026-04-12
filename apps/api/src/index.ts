@@ -391,7 +391,7 @@ async function streamOllama(
   return full.trim();
 }
 
-async function makeDirectOutput(message: string, model: string, images?: string[]): Promise<string> {
+async function makeDirectOutput(message: string, model: string, images?: string[], systemPrompt?: string): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -408,7 +408,7 @@ async function makeDirectOutput(message: string, model: string, images?: string[
     const aiResult = await callOllama(
       prompt,
       model,
-      `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
       images
     );
 
@@ -422,7 +422,7 @@ async function makeDirectOutput(message: string, model: string, images?: string[
   return extractDirectOutput(source);
 }
 
-async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void, images?: string[]): Promise<string> {
+async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void, images?: string[], systemPrompt?: string): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -439,7 +439,7 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
     const streamed = await streamOllama(
       prompt,
       model,
-      `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
       onChunk,
       images
     );
@@ -1087,7 +1087,7 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     const mode = payload.mode === "direct" ? "direct" : "multi-step";
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
-    const sessionId = payload.sessionId;`n    const systemPrompt = payload.systemPrompt;
+    const sessionId = payload.sessionId;
     const systemPrompt = payload.systemPrompt;
     const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
@@ -1113,8 +1113,8 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
 
     const finalOutput =
       mode === "direct"
-        ? await makeDirectOutput(finalPrompt, selectedModel, images)
-        : await makeAgentOutput(finalPrompt, topic, selectedModel, images);
+        ? await makeDirectOutput(finalPrompt, selectedModel, images, systemPrompt)
+        : await makeAgentOutput(finalPrompt, topic, selectedModel, systemPrompt, images);
 
     const now = new Date().toISOString();
     const run: RunRecord = {
@@ -1170,7 +1170,7 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
     const mode = payload.mode === "direct" ? "direct" : "multi-step";
     const requestedModel = String(payload.model ?? "").trim();
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
-    const sessionId = payload.sessionId;`n    const systemPrompt = payload.systemPrompt;
+    const sessionId = payload.sessionId;
     const systemPrompt = payload.systemPrompt;
     const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
@@ -1206,7 +1206,7 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
 
     const streamedOutput =
       mode === "direct"
-        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk, images)
+        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk, images, systemPrompt)
         : await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, systemPrompt, images);
 
     const finalOutput = streamedOutput || fullOutput;
