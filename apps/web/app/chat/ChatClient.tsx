@@ -374,7 +374,7 @@ function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { co
   };
 
   return (
-    <div className="prose-container" style={{ fontSize: fontSize, lineHeight: 1.6, color: "inherit" }}>
+    <div className="prose-container" style={{ fontSize: fontSize, lineHeight: 1.6, color: "inherit", overflowWrap: "break-word", wordBreak: "break-word" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -1575,7 +1575,10 @@ export default function ChatClient() {
                                 color: message.role === "user" ? "#fff" : ui.text,
                                 border: `1px solid ${message.role === "user" ? "rgba(255,255,255,0.1)" : ui.assistantBorder}`,
                                 boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                                position: "relative"
+                                position: "relative",
+                                overflowWrap: "break-word",
+                                wordBreak: "break-word",
+                                minWidth: 0
                               }}>
                                 {/* Message Toolbar */}
                                 <AnimatePresence>
