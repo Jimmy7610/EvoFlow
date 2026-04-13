@@ -603,6 +603,13 @@ export default function ChatClient() {
     localStorage.setItem("evoflow_is_glass", String(isGlassmorphic));
   }, [customAccentColor, isGlassmorphic]);
 
+  // RESTORED: Save Sessions fallback (Crucial until API sync is 100% complete)
+  useEffect(() => {
+    if (sessions.length > 0 && !isLoadingModels) {
+      localStorage.setItem("evoflow_sessions", JSON.stringify(sessions));
+    }
+  }, [sessions, isLoadingModels]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
