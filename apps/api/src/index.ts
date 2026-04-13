@@ -8,6 +8,7 @@ import { PrismaClient } from "@prisma/client";
 import multer from "multer";
 const pdf = require("pdf-parse");
 import fs from "fs";
+import { webSearch } from "./tools/search";
 
 const prisma = new PrismaClient();
 const upload = multer({ dest: "uploads/" });
@@ -544,13 +545,32 @@ async function streamAgentOutput(
   await new Promise(r => setTimeout(r, 400)); 
   emitStep("planner", "completed", "Defining strategy...", `Strategy: Address user query about ${topic} using ${model}.`);
 
+  // Research Detection (Simplified for MVP)
+  const needsWeb = lower.includes("nyheter") || lower.includes("väder") || lower.includes("news") || 
+                  lower.includes("nätet") || lower.includes("internet") || lower.includes("aftonbladet") ||
+                  lower.includes("latest") || lower.includes("recent") || lower.includes("today");
+
+  let searchContext = "";
+  if (needsWeb) {
+    emitStep("research", "active", `Searching for: ${message}`);
+    const results = await webSearch(message);
+    if (results.length > 0) {
+      searchContext = `\n[Web Search Results]:\n${results.map(r => `- ${r.title}: ${r.snippet} (Source: ${r.url})`).join("\n")}\n`;
+      emitStep("research", "completed", `Searching for: ${message}`, `Found ${results.length} relevant sources.`);
+    } else {
+      emitStep("research", "completed", `Searching for: ${message}`, "No live results found.");
+    }
+  }
+
   emitStep("executor", "active", "Generating response...");
   
+  const finalPromptWithSearch = searchContext ? `${searchContext}\n${message}` : message;
+
   try {
     const streamed = await streamOllama(
-      message,
+      finalPromptWithSearch,
       model,
-      systemPrompt || `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
       onChunk,
       images
     );

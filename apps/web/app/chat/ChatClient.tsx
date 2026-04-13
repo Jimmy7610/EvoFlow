@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip } from "lucide-react";
+import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip, Globe } from "lucide-react";
 import SystemStatus from "./SystemStatus";
 
 type Message = {
@@ -99,6 +99,7 @@ const ReasoningStepper = ({ steps, isDark, activePersonaId, ui }: { steps: any[]
   const nodeIcons: Record<string, any> = {
     memory: <Layers size={14} />,
     planner: <Check size={14} />,
+    research: <Globe size={14} />,
     executor: <Terminal size={14} />,
     direct: <Square size={14} />,
   };
@@ -106,6 +107,7 @@ const ReasoningStepper = ({ steps, isDark, activePersonaId, ui }: { steps: any[]
   const nodeLabels: Record<string, string> = {
     memory: "Context Retrieval",
     planner: "Strategic Planning",
+    research: "Live Web Research",
     executor: "Generation Engine",
     direct: "Direct Response",
   };
