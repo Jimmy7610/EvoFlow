@@ -28,10 +28,11 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 - [x] **Premium State Management**: Replaced volatile local storage with a robust SQLite/Prisma architecture. Persistent session history across reboots.
 
 ### Phase 4: Intelligence & System Maturity (The "Pro" Era)
-- [x] **Intelligent Model Matching (Day 10)**: Automated detection and selection of the best local model for each persona (e.g., Expert Developer -> `qwen3-coder`).
-- [x] **Battle Mode 2.0**: Support for multi-persona comparisons. Compare different roles side-by-side on independent models.
-- [x] **Quad-Indication Dashboard**: Centralized health monitoring for API, Web, Executor, and Ollama with real-time feedback.
-- [x] **Premium Session Flows**: theme-consistent "Click to Confirm" deletion workflows and instant input clearing on send.
+- [x] **Intelligent Model Matching & Dynamic Persona Routing**
+- [x] **Battle Mode 2.0 (Dual-Pane Benchmarking)**
+- [x] **Reasoning Flow Visualizer (Real-time Transparency)**
+- [x] **System Health Dashboard & Observability**
+- [x] **Day 11: Contextual Memory Injection**: Automated retrieval of relevant project files based on current chat intent.
 
 
 ---

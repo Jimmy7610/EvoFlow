@@ -61,6 +61,7 @@ model ChatMessage {
   model          String?
   modelSelection String?
   transport      String?
+  steps          String? // JSON array of reasoning steps (Day 11)
   createdAt      DateTime    @default(now())
 
   @@index([sessionId])

@@ -35,6 +35,10 @@ EvoFlow has recently undergone a major structural and visual transformation to b
   - **Multi-Persona Comparison**: Compare different AI roles (e.g., Code Expert vs Product Architect) side-by-side on the same model or across different models.
   - **Independent Persona Selection**: Full control over system prompts for both primary and secondary chat panes.
   - **Intelligent Model Matching**: Automated detection of "best match" models for each persona. If you select **Code Expert**, EvoFlow automatically activates high-performance coding models like `qwen3-coder:30b` if they are installed locally.
+- **Advanced Intelligence (Day 11)**:
+  - **Battle Mode 2.0**: Enhanced model benchmarking with persona-level optimization and real-time comparisons.
+  - **Reasoning Flow Visualizer**: High-fidelity, animated transparency into multi-agent workflows (Memory, Planning, Execution).
+  - **System Health Monitor**: Real-time observability of backend services and model status.
 
 
 

@@ -30,6 +30,7 @@ type RunRecord = {
   finalOutput: string;
   memoryRunCount: number;
   memorySummary: string;
+  steps: string; // Day 11
   createdAt: string;
   updatedAt: string;
 };
@@ -521,15 +522,30 @@ async function streamAgentOutput(
   onChunk: (chunk: string) => void,
   systemPrompt?: string,
   images?: string[]
-): Promise<string> {
+): Promise<{ content: string; steps: any[] }> {
+  const steps: any[] = [];
+  const emitStep = (node: string, status: "active" | "completed", input?: string, output?: string) => {
+    const step = { node, status, input, output, id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 5)}` };
+    steps.push(step);
+    // Emit special marker for frontend (Day 11)
+    onChunk(`\n¤STEP¤${JSON.stringify(step)}¤\n`);
+    return step;
+  };
+
   const lower = message.toLowerCase();
 
-  if (topic === "email-validator") {
-    const canned = await makeAgentOutput(message, topic, model, systemPrompt, images);
-    onChunk(canned);
-    return canned;
-  }
+  // Multi-Step Workflow Simulation/Logic (Day 11)
+  emitStep("memory", "active", message);
+  const { memoryRunCount, memorySummary } = getMemorySummary(topic);
+  emitStep("memory", "completed", message, memorySummary);
 
+  emitStep("planner", "active", "Defining strategy...");
+  // Simulate planning delay for "Pro" feel
+  await new Promise(r => setTimeout(r, 400)); 
+  emitStep("planner", "completed", "Defining strategy...", `Strategy: Address user query about ${topic} using ${model}.`);
+
+  emitStep("executor", "active", "Generating response...");
+  
   try {
     const streamed = await streamOllama(
       message,
@@ -540,7 +556,8 @@ async function streamAgentOutput(
     );
 
     if (streamed) {
-      return streamed;
+      emitStep("executor", "completed", "Generating response...", "Success");
+      return { content: streamed, steps };
     }
   } catch (error) {
     console.warn("[apps/api] Ollama multi-step streaming fallback triggered:", error);
@@ -548,7 +565,8 @@ async function streamAgentOutput(
 
   const fallback = `Processed in multi-step mode: ${message}`;
   onChunk(fallback);
-  return fallback;
+  emitStep("executor", "completed", "Generating response...", "Fallback used");
+  return { content: fallback, steps };
 }
 
 
@@ -856,7 +874,7 @@ app.post(["/sessions/:id/duplicate", "/api/sessions/:id/duplicate"], requireAuth
 
 app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, async (req, res) => {
   try {
-    const { role, content, model, transport, modelSelection } = req.body;
+    const { role, content, model, transport, modelSelection, steps } = req.body;
     const message = await prisma.chatMessage.create({
       data: {
         sessionId: req.params.id,
@@ -865,6 +883,7 @@ app.post(["/sessions/:id/messages", "/api/sessions/:id/messages"], requireAuth, 
         model,
         transport,
         modelSelection,
+        steps: steps ? (typeof steps === "string" ? steps : JSON.stringify(steps)) : null,
       },
     });
     // Update session updatedAt
@@ -1224,12 +1243,19 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
       res.write(chunk);
     };
 
-    const streamedOutput =
-      mode === "direct"
-        ? await streamDirectOutput(finalPrompt, selectedModel, onChunk, images, systemPrompt)
-        : await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, systemPrompt, images);
+    let steps: any[] = [];
+    
+    if (mode === "direct") {
+       const directOutput = await streamDirectOutput(finalPrompt, selectedModel, onChunk, images, systemPrompt);
+       fullOutput = directOutput;
+       steps = [{ node: "direct", status: "completed", output: "Direct generation complete" }];
+    } else {
+       const agentResult = await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, systemPrompt, images);
+       fullOutput = agentResult.content;
+       steps = agentResult.steps;
+    }
 
-    const finalOutput = streamedOutput || fullOutput;
+    const finalOutput = fullOutput;
     const now = new Date().toISOString();
 
     const run: RunRecord = {
@@ -1242,6 +1268,7 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
       finalOutput,
       memoryRunCount,
       memorySummary,
+      steps: JSON.stringify(steps),
       createdAt: now,
       updatedAt: now,
     };

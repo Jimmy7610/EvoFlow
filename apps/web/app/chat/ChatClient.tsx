@@ -16,6 +16,7 @@ type Message = {
   model?: string;
   modelSelection?: string;
   transport?: "normal" | "stream";
+  steps?: any[]; // Day 11: Granular reasoning nodes
 };
 
 type Session = {
@@ -89,6 +90,84 @@ const PERSONAS = {
 };
 
 type PersonaKey = keyof typeof PERSONAS;
+
+// --- COMPONENTS (Day 11) ---
+
+const ReasoningStepper = ({ steps, isDark, activePersonaId, ui }: { steps: any[], isDark: boolean, activePersonaId: PersonaKey, ui: any }) => {
+  if (!steps || steps.length === 0) return null;
+
+  const nodeIcons: Record<string, any> = {
+    memory: <Layers size={14} />,
+    planner: <Check size={14} />,
+    executor: <Terminal size={14} />,
+    direct: <Square size={14} />,
+  };
+
+  const nodeLabels: Record<string, string> = {
+    memory: "Context Retrieval",
+    planner: "Strategic Planning",
+    executor: "Generation Engine",
+    direct: "Direct Response",
+  };
+
+  return (
+    <div style={{ margin: "12px 0", padding: "12px", borderRadius: 16, background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)", border: `1px solid ${ui.panelBorder}` }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, opacity: 0.8 }}>
+        <div style={{ padding: "4px 8px", borderRadius: 6, background: ui.accent, color: "#fff", fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          Reasoning Flow
+        </div>
+      </div>
+      
+      <div style={{ display: "grid", gap: 16, position: "relative" }}>
+        {/* Connection Line */}
+        <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 2, background: ui.panelBorder, opacity: 0.5 }} />
+
+        {steps.map((step, idx) => {
+          const isActive = step.status === "active";
+          const isCompleted = step.status === "completed";
+          const icon = nodeIcons[step.node] || <Code size={14} />;
+
+          return (
+            <motion.div 
+              key={step.id || idx}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              style={{ display: "flex", gap: 12, alignItems: "flex-start", position: "relative", zIndex: 1 }}
+            >
+              <div style={{ 
+                width: 24, 
+                height: 24, 
+                borderRadius: "50%", 
+                background: isCompleted ? "#22c55e" : (isActive ? ui.accent : ui.controlBg),
+                border: `2px solid ${isActive ? ui.accent : ui.panelBorder}`,
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center",
+                color: (isCompleted || isActive) ? "#fff" : ui.subtle,
+                boxShadow: isActive ? `0 0 12px ${ui.accent}` : "none",
+                transition: "all 0.3s"
+              }}>
+                {isCompleted ? <Check size={14} strokeWidth={3} /> : (isActive ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>{icon}</motion.div> : icon)}
+              </div>
+              
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? ui.accent : ui.text, display: "flex", alignItems: "center", gap: 6 }}>
+                  {nodeLabels[step.node] || step.node.toUpperCase()}
+                  {isActive && <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>...</motion.span>}
+                </div>
+                {step.output && (
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", maxHeight: 60, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {step.output}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const PROMPT_TEMPLATES = [
   { name: "Review Code", prompt: "Please perform a detailed code review of the following snippet. Look for bugs, security issues, and optimization opportunities:" },
@@ -525,6 +604,36 @@ export default function ChatClient() {
     accent: activeTheme.accent,
   };
 
+  // Day 11: Persistence Sync & Load
+  useEffect(() => {
+    async function init() {
+      const { models: m, defaultModel: dm } = await fetchModels(apiBaseUrl, demoToken);
+      setModels(m);
+      if (dm) setDefaultModel(dm);
+      
+      const saved = loadSessions(dm || "llama3");
+      if (saved.length > 0) {
+        console.log("[Day 11] Hydrating sessions from storage:", saved.length);
+        setSessions(saved);
+        setActiveSessionId(saved[0].id);
+      } else {
+        console.log("[Day 11] No sessions found, creating fresh one.");
+        const fresh = createEmptySession(dm || "llama3");
+        setSessions([fresh]);
+        setActiveSessionId(fresh.id);
+      }
+      setIsLoadingModels(false);
+    }
+    init();
+  }, [apiBaseUrl]); // Added apiBaseUrl to deps
+
+  // Save changes to localStorage, but ONLY if we have sessions loaded
+  useEffect(() => {
+    if (sessions.length > 0 && !isLoadingModels) {
+      localStorage.setItem("evoflow_sessions", JSON.stringify(sessions));
+    }
+  }, [sessions, isLoadingModels]);
+
   // Auto-resize logic
   useEffect(() => {
     if (textareaRef.current) {
@@ -784,11 +893,63 @@ export default function ChatClient() {
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let full = "";
+      let lastSteps: any[] = [];
+      let streamBuffer = "";
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        full += decoder.decode(value);
-        setComparisonMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: full } : m)));
+        streamBuffer += decoder.decode(value, { stream: true });
+        
+        // Day 11: Robust Token Filtering
+        // Identify all complete tags in the current buffer
+        let newContent = "";
+        while (streamBuffer.length > 0) {
+          const stepStartIdx = streamBuffer.indexOf("¤STEP¤");
+          
+          if (stepStartIdx === -1) {
+            // No marker start found. 
+            // BUT: if the buffer ends with '¤' or '¤S' etc., it might be a partial start.
+            // Safe to take everything except a potential partial marker.
+            const possiblePartial = streamBuffer.lastIndexOf("¤");
+            if (possiblePartial !== -1 && streamBuffer.length - possiblePartial < 7) {
+              newContent += streamBuffer.substring(0, possiblePartial);
+              streamBuffer = streamBuffer.substring(possiblePartial);
+              break;
+            } else {
+              newContent += streamBuffer;
+              streamBuffer = "";
+              break;
+            }
+          }
+
+          // Found a start. Look for end.
+          const stepEndIdx = streamBuffer.indexOf("¤", stepStartIdx + 6);
+          if (stepEndIdx === -1) {
+            // Incomplete tag. Move text BEFORE the tag to newContent, keep the rest in buffer.
+            newContent += streamBuffer.substring(0, stepStartIdx);
+            streamBuffer = streamBuffer.substring(stepStartIdx);
+            break; 
+          }
+
+          // Complete tag found!
+          // 1. Text before tag
+          newContent += streamBuffer.substring(0, stepStartIdx);
+          
+          // 2. Extract and parse tag
+          const tag = streamBuffer.substring(stepStartIdx, stepEndIdx + 1);
+          try {
+            const json = tag.replace("¤STEP¤", "").replace("¤", "");
+            const step = JSON.parse(json);
+            lastSteps = [...lastSteps.filter(s => s.node !== step.node || s.id === step.id), step];
+          } catch(e) {}
+
+          // 3. Advance buffer
+          streamBuffer = streamBuffer.substring(stepEndIdx + 1);
+        }
+
+        full += newContent;
+        setComparisonMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, content: full, steps: lastSteps } : m)));
       }
     } catch (e) {
       addNotification("Comparison model failed", "error");
@@ -851,17 +1012,62 @@ export default function ChatClient() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let full = "";
+        let steps: any[] = [];
+        let streamBuffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
-          full += decoder.decode(value, { stream: true });
-          patchSession(activeSession.id, (session) => ({
-            ...session,
-            updatedAt: new Date().toISOString(),
-            messages: session.messages.map((m) => m.id === assistantId ? { ...m, content: full, model: modelFromHeader, transport: "stream", modelSelection: selectionFromHeader } : m),
+          if (done || isAborted) break;
+          streamBuffer += decoder.decode(value, { stream: true });
+
+          // Day 11: Robust Token Filtering
+          let newContent = "";
+          while (streamBuffer.length > 0) {
+            const stepStartIdx = streamBuffer.indexOf("¤STEP¤");
+            
+            if (stepStartIdx === -1) {
+              const possiblePartial = streamBuffer.lastIndexOf("¤");
+              if (possiblePartial !== -1 && streamBuffer.length - possiblePartial < 7) {
+                newContent += streamBuffer.substring(0, possiblePartial);
+                streamBuffer = streamBuffer.substring(possiblePartial);
+                break;
+              } else {
+                newContent += streamBuffer;
+                streamBuffer = "";
+                break;
+              }
+            }
+
+            const stepEndIdx = streamBuffer.indexOf("¤", stepStartIdx + 6);
+            if (stepEndIdx === -1) {
+              newContent += streamBuffer.substring(0, stepStartIdx);
+              streamBuffer = streamBuffer.substring(stepStartIdx);
+              break; 
+            }
+
+            newContent += streamBuffer.substring(0, stepStartIdx);
+            const tag = streamBuffer.substring(stepStartIdx, stepEndIdx + 1);
+            try {
+              const json = tag.replace("¤STEP¤", "").replace("¤", "");
+              const step = JSON.parse(json);
+              steps = [...steps.filter(s => s.node !== step.node || s.id === step.id), step];
+            } catch(e) {}
+            streamBuffer = streamBuffer.substring(stepEndIdx + 1);
+          }
+
+          full += newContent;
+          patchSession(activeSession.id, (s) => ({
+            ...s,
+            messages: s.messages.map((m) => (m.id === assistantId ? { ...m, content: full, steps } : m)),
           }));
         }
-        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "assistant", content: full, model: modelFromHeader, transport: "stream", modelSelection: selectionFromHeader }) }).catch(e => console.error("Sync assistant failed"));
+
+        // Final Sync to DB
+        fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "assistant", content: full, model: modelFromHeader, transport: "stream", modelSelection: selectionFromHeader, steps }),
+        }).catch(e => console.error("Sync assistant failed"));
       } else {
         const response = await fetch(`${apiBaseUrl}/runs`, { method: "POST", headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, body: JSON.stringify(payload) });
         const text = await response.text();
@@ -1367,6 +1573,11 @@ export default function ChatClient() {
                                 </AnimatePresence>
 
                                 <div style={{ fontSize: 10, fontWeight: 800, opacity: 0.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>{message.role === "user" ? "You" : "EvoFlow"}</div>
+                                
+                                {message.role === "assistant" && message.steps && message.steps.length > 0 && (
+                                   <ReasoningStepper steps={message.steps} isDark={isDark} activePersonaId={activePersonaId} ui={ui} />
+                                )}
+
                                 <RichMessageContent content={message.content} isStreaming={isStreaming} isDark={isDark} ui={ui} fontSize={fontSize} />
                                 <div style={{ fontSize: 9, opacity: 0.4, marginTop: 8, textAlign: "right" }}>{message.model || activeSession.model}</div>
                               </div>
@@ -1436,7 +1647,14 @@ export default function ChatClient() {
                     <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "grid", gap: 12 }}>
                       {comparisonMessages.map(m => (
                         <div key={m.id} style={{ padding: 10, borderRadius: 12, border: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
-                          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{m.content}</div>
+                          
+                          {m.steps && m.steps.length > 0 && (
+                             <div style={{ marginBottom: 12 }}>
+                                <ReasoningStepper steps={m.steps} isDark={isDark} activePersonaId={comparisonPersonaId} ui={ui} />
+                             </div>
+                          )}
+
+                          <RichMessageContent content={m.content} isStreaming={isComparisonSending && m.id === comparisonMessages[comparisonMessages.length-1].id} isDark={isDark} ui={ui} fontSize={fontSize - 1} />
                         </div>
                       ))}
                     </div>
