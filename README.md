@@ -20,21 +20,21 @@ EvoFlow has evolved into a "Premium Local AI Product" through a rigorous 30-day 
 - **Theme Ecosystem**: Persistent UI themes including *Midnight*, *Emerald*, *Cyberpunk*, *Obsidian*, and clean *Light* setups. Dynamic font scaling ensures perfect readability.
 
 ### 🧠 Advanced Intelligence
-- **Multi-Agent Reasoning Visualizer**: See the AI "think" in real-time. A beautifully animated stepper tracks the Planner, Executor, and Reviewer as they work through complex prompts.
-- **Live Web Research**: The agentic workflow can autonomously fetch live news and search the web (via an integrated zero-config DuckDuckGo scraper) for grounded answers.
-- **Intelligent RAG (Document Analysis)**: Upload `.txt`, `.md`, or `.pdf` files. EvoFlow maintains a contextual memory of uploaded documents per session.
-- **Intelligent Persona Routing**: Switch between roles like *Code Expert*, *Security Lead*, or *Product Architect*. EvoFlow will automatically activate the local highest-performance model for that specific job (e.g., `qwen2.5-coder` for coding).
+- **Interactive Reasoning Visualization**: Gain deep insight into the AI's "thinking". Every step (Planner, Context, Generation) is now interactive—click to expand and see the internal thought process, retrieved context matches, and relevancy scores.
+- **Deep Memory Retrieval (RAG)**: The memory engine transparency allows you to see exactly which previous messages were retrieved to build the current response.
+- **Advanced Context Steering 🎯**: Surgically guide the AI's memory. Define focus keywords to boost specific topics or apply exclusion rules to block irrelevant historical data from reaching the AI context.
+- **Live Web Research**: The agentic workflow autonomously fetches live news and searches the web (integrated DuckDuckGo) for grounded answers.
+- **Hybrid Cloud-Local Routing**: Seamlessly mix local models with premium cloud models (OpenAI/Anthropic). EvoFlow intelligently routes tasks based on your model selection and stored API keys.
 
 ### 💬 The Chat Experience
-- **Battle Mode 2.0**: The ultimate benchmarking tool. Compare two different local models or two different system personas side-by-side on the exact same prompt to evaluate generation quality.
-- **Streaming & Control**: Real-time response streaming with instant interruption (Stop Generation) via AbortControllers.
-- **High-Fidelity Rendering**: Full Markdown, GitHub Flavored Markdown (GFM) tables, and gorgeous syntax highlighting for code blocks with one-click copy.
-- **Quick Prompts ⚡**: A built-in library of rapid-fire templates for code review, summarizing, and fixing bugs.
+- **Battle Mode 2.0**: The ultimate benchmarking tool. Compare two different models (e.g., GPT-4o vs Llama-3) or personas side-by-side to evaluate quality.
+- **Streaming & Control**: High-performance streaming with instant interruption (Stop Generation) and masking of sensitive API keys in the settings panel.
+- **Intelligent Persona Routing**: Switch between roles like *Code Expert* or *Security Lead*. EvoFlow automatically pairs these with the optimal model configuration.
 
-### 📁 Session & Export Power
-- **Persistent Memory**: A robust SQLite + Prisma backend means sessions survive browser reboots.
-- **Bulk Management**: Multi-selection mode for cleaning up the sidebar.
-- **Unified Exports**: One-click export to high-fidelity `.md` or raw `.json` payloads for archiving flows.
+### ⚙️ Professional Settings & Infrastructure
+- **API Key Management**: Securely store and manage your cloud AI keys directly in the UI with masked displays for privacy.
+- **Unified Root Infrastructure**: Both the API and Worker now share a stable, unified SQLite database at the project root for maximum reliability in high-load scenarios.
+- **System Monitors**: Real-time status indicators for the local API, background worker, and Ollama connectivity.
 
 ---
 

@@ -1,214 +1,196 @@
-/* 
- * EvoFlow AI Ops - Executor V4 patch
- * Drop-in replacement candidate for: workers/executor/src/index.ts
- *
- * Goals:
- * - Preserve the exact input payload as sent from the UI
- * - Support direct mode for exact responses
- * - Support multi-step mode for agent workflows
- * - Use memory only when it is actually relevant
- *
- * IMPORTANT:
- * Because this file was produced without direct access to your repo, it is written to be
- * conservative and easy to adapt. Replace the DB helpers with your project's existing ones
- * if their names differ. The core V4 logic is isolated in processRunV4().
- */
-
 import 'dotenv/config';
+import { PrismaClient } from '@prisma/client';
 import { getRelevantMemory, buildMemorySummary } from './lib/memory';
 import { generateDirectReply, generateMultiStepReply } from './lib/ollama';
+import { ChatOpenAI } from '@langchain/openai';
+
+const prisma = new PrismaClient();
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-
-type RunRecord = {
-  id: string;
-  status: string;
-  input: JsonValue;
-  output?: JsonValue | null;
-};
 
 type NormalizedRunInput = {
   message: string;
   mode: 'direct' | 'multi-step';
+  model?: string;
+  systemPrompt?: string;
   [key: string]: JsonValue | undefined;
 };
 
-const POLL_INTERVAL_MS = Number(process.env.EXECUTOR_POLL_INTERVAL_MS || 2500);
+const POLL_INTERVAL_MS = Number(process.env.EXECUTOR_POLL_INTERVAL_MS || 1500);
 
 /**
  * -----------------------------
- * Project-specific DB adapters
+ * Database & Config Helpers
  * -----------------------------
- * Replace these with your real database calls if needed.
  */
-async function getQueuedRun(): Promise<RunRecord | null> {
-  // TODO: swap with your actual DB implementation.
-  return null;
+async function getQueuedRun() {
+  return await prisma.run.findFirst({
+    where: { status: 'queued' },
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
-async function markRunStarted(runId: string): Promise<void> {
-  // TODO: swap with your actual DB implementation.
-  console.log(`[executor] markRunStarted(${runId})`);
+async function markRunStarted(runId: string) {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { status: 'running' },
+  });
 }
 
-async function markRunCompleted(runId: string, output: JsonValue): Promise<void> {
-  // TODO: swap with your actual DB implementation.
-  console.log(`[executor] markRunCompleted(${runId})`);
-  console.dir(output, { depth: 10 });
+async function markRunCompleted(runId: string, result: JsonValue) {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { 
+      status: 'completed',
+      result: JSON.stringify(result)
+    },
+  });
 }
 
-async function markRunFailed(runId: string, errorMessage: string): Promise<void> {
-  // TODO: swap with your actual DB implementation.
-  console.error(`[executor] markRunFailed(${runId}): ${errorMessage}`);
+async function markRunFailed(runId: string, errorMessage: string) {
+  await prisma.run.update({
+    where: { id: runId },
+    data: { 
+      status: 'failed',
+      error: errorMessage
+    },
+  });
 }
 
-async function getRecentCompletedRuns(limit = 20): Promise<RunRecord[]> {
-  // TODO: swap with your actual DB implementation.
-  return [];
+async function getRecentCompletedRuns(limit = 20) {
+  return await prisma.run.findMany({
+    where: { status: 'completed' },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+  });
+}
+
+async function getCloudConfig() {
+  const settings = await prisma.globalSettings.findUnique({ where: { id: 'global' } });
+  if (!settings || !settings.apiKeys) return null;
+  try {
+    return JSON.parse(settings.apiKeys);
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
  * -----------------------------
- * Core V4 helpers
+ * Core Dispatch logic
  * -----------------------------
  */
 
-function normalizeInput(input: JsonValue): NormalizedRunInput {
-  const fallback: NormalizedRunInput = {
-    message: '',
-    mode: 'multi-step',
-  };
-
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+function normalizeInput(input: string | null): NormalizedRunInput {
+  const fallback: NormalizedRunInput = { message: '', mode: 'multi-step' };
+  if (!input) return fallback;
+  try {
+    const raw = JSON.parse(input);
+    return {
+      ...raw,
+      message: typeof raw.message === 'string' ? raw.message : '',
+      mode: raw.mode === 'direct' ? 'direct' : 'multi-step',
+      model: typeof raw.model === 'string' ? raw.model : undefined
+    };
+  } catch (e) {
     return fallback;
   }
-
-  const raw = input as Record<string, JsonValue>;
-  const message = typeof raw.message === 'string' ? raw.message : '';
-  const mode = raw.mode === 'direct' ? 'direct' : 'multi-step';
-
-  return {
-    ...raw,
-    message,
-    mode,
-  };
 }
 
-function shouldForceExactReply(message: string, mode: 'direct' | 'multi-step'): boolean {
-  if (mode !== 'direct') return false;
-  const lower = message.toLowerCase();
-
-  return (
-    lower.includes('svara bara med ordet') ||
-    lower.includes('reply with only') ||
-    lower.includes('answer only with') ||
-    lower.includes('only the word') ||
-    lower.includes('bara med ordet')
-  );
-}
-
-function extractForcedWord(message: string): string | null {
-  const patterns = [
-    /svara bara med ordet\s+([^\s"'.!,?]+)/i,
-    /answer only with\s+([^\s"'.!,?]+)/i,
-    /reply with only\s+([^\s"'.!,?]+)/i,
-    /only the word\s+([^\s"'.!,?]+)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = message.match(pattern);
-    if (match?.[1]) return match[1].trim();
-  }
-
-  return null;
-}
-
-async function processRunV4(run: RunRecord) {
-  const normalized = normalizeInput(run.input);
+async function processRunV4(run: any) {
+  const normalized = normalizeInput(run.payload);
   const message = normalized.message.trim();
   const mode = normalized.mode;
+  const targetModel = normalized.model || 'llama3';
 
-  const previousRuns = await getRecentCompletedRuns(20);
+  // 1. Fetch Context / Memory
+  const recentRaw = await getRecentCompletedRuns(20);
+  const previousRuns = recentRaw.map(r => ({ id: r.id, status: r.status, input: JSON.parse(r.payload || '{}') }));
+  
+  const steeringRules = normalized.contextSteering ? (typeof normalized.contextSteering === 'string' ? JSON.parse(normalized.contextSteering) : normalized.contextSteering) : null;
+
   const relevantMemory = getRelevantMemory(message, previousRuns, {
     maxItems: 5,
     minScore: 0.18,
+    steeringRules: steeringRules
   });
   const memorySummary = buildMemorySummary(relevantMemory);
 
-  const forcedExactWord = shouldForceExactReply(message, mode) ? extractForcedWord(message) : null;
-
+  // 2. Cloud Routing Check
+  const cloudConfig = await getCloudConfig();
+  const isOpenAI = targetModel.startsWith('gpt-');
+  
   let finalOutput = '';
-  let node = '';
+  let node = isOpenAI ? 'cloud-agent' : 'local-agent';
 
-  if (forcedExactWord) {
-    finalOutput = forcedExactWord;
-    node = 'direct-agent';
-  } else if (mode === 'direct') {
-    finalOutput = await generateDirectReply({
-      message,
-      memorySummary,
+  if (isOpenAI && cloudConfig?.openai) {
+    console.log(`[executor] Routing to OpenAI: ${targetModel}`);
+    const llm = new ChatOpenAI({
+      openAIApiKey: cloudConfig.openai,
+      modelName: targetModel,
+      temperature: 0.7
     });
-    node = 'direct-agent';
+    const prompt = normalized.systemPrompt 
+      ? `${normalized.systemPrompt}\n\nUser: ${message}`
+      : message;
+    
+    const response = await llm.invoke(prompt);
+    finalOutput = response.content as string;
   } else {
-    finalOutput = await generateMultiStepReply({
-      message,
-      memorySummary,
-      input: normalized,
-    });
-    node = 'planner-agent';
+    // Local / Ollama routing
+    if (mode === 'direct') {
+      finalOutput = await generateDirectReply({ message, memorySummary });
+      node = 'direct-agent';
+    } else {
+      finalOutput = await generateMultiStepReply({ message, memorySummary, input: normalized });
+      node = 'planner-agent';
+    }
   }
 
   return {
     ok: true,
     mode,
     node,
-    input: run.input,               // IMPORTANT: preserve exact raw payload as stored
-    normalizedInput: normalized,    // Optional debug field
+    model: targetModel,
+    input: normalized,
     memoryRunCount: relevantMemory.length,
     memorySummary,
     finalOutput,
-    steps:
-      mode === 'direct'
-        ? [
-            {
-              node,
-              output: finalOutput,
-            },
-          ]
-        : [
-            {
-              node: 'memory',
-              output: memorySummary,
-            },
-            {
-              node,
-              output: finalOutput,
-            },
-          ],
+    steps: [
+      { 
+        id: `step_mem_${Date.now()}`,
+        node: 'memory', 
+        status: 'completed',
+        output: relevantMemory.length > 0 
+          ? `🔍 Found ${relevantMemory.length} relevant context chunks:\n\n${relevantMemory.map((m, i) => `${i+1}. "${m.message.slice(0, 100)}..." (Score: ${m.score.toFixed(2)})`).join('\n')}`
+          : '⚠️ No relevant historical context found for this query.'
+      },
+      { 
+        id: `step_gen_${Date.now()}`,
+        node, 
+        status: 'completed',
+        output: finalOutput 
+      }
+    ]
   };
 }
 
-async function processSingleRun(run: RunRecord) {
-  await markRunStarted(run.id);
-
-  try {
-    const result = await processRunV4(run);
-    await markRunCompleted(run.id, result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await markRunFailed(run.id, message);
-  }
-}
-
 async function loop() {
-  console.log('[executor] V4 executor started');
+  console.log('[executor] Pro Worker started (Prisma Polling Active)');
 
   while (true) {
     try {
       const run = await getQueuedRun();
-
       if (run) {
-        await processSingleRun(run);
+        console.log(`[executor] Processing run ${run.id}...`);
+        await markRunStarted(run.id);
+        try {
+          const result = await processRunV4(run);
+          await markRunCompleted(run.id, result);
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          await markRunFailed(run.id, errMsg);
+        }
       } else {
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       }

@@ -23,9 +23,16 @@ export type MemoryMatch = {
   outputText: string;
 };
 
+type SteeringRules = {
+  focus?: string[];
+  exclude?: string[];
+  instructions?: string;
+};
+
 type MemoryOptions = {
   maxItems?: number;
   minScore?: number;
+  steeringRules?: SteeringRules;
 };
 
 const STOP_WORDS = new Set([
@@ -117,6 +124,7 @@ export function getRelevantMemory(
 ): MemoryMatch[] {
   const maxItems = options.maxItems ?? 5;
   const minScore = options.minScore ?? 0.18;
+  const steering = options.steeringRules;
 
   const currentKeywords = toKeywordSet(currentMessage);
 
@@ -125,12 +133,28 @@ export function getRelevantMemory(
       const previousMessage = getRunMessage(run);
       const previousOutput = safeString(run.output);
       const previousText = `${previousMessage} ${previousOutput}`.trim();
+      
+      const lowerText = previousText.toLowerCase();
+
+      // 1. Steering: Exclusion
+      if (steering?.exclude && steering.exclude.length > 0) {
+        if (steering.exclude.some(term => lowerText.includes(term.toLowerCase()))) {
+          return null; // Exclude this chunk entirely
+        }
+      }
 
       const previousKeywords = toKeywordSet(previousText);
-      const score =
+      let score =
         overlapScore(currentKeywords, previousKeywords) +
         phraseBoost(currentMessage, previousText) +
         recencyBoost(index);
+
+      // 2. Steering: Focus Boost
+      if (steering?.focus && steering.focus.length > 0) {
+        if (steering.focus.some(term => lowerText.includes(term.toLowerCase()))) {
+          score += 0.25; // Significant boost for focused topics
+        }
+      }
 
       return {
         runId: run.id,
@@ -139,7 +163,7 @@ export function getRelevantMemory(
         outputText: previousOutput,
       };
     })
-    .filter((item) => item.message || item.outputText)
+    .filter((item): item is MemoryMatch => item !== null && (!!item.message || !!item.outputText))
     .filter((item) => item.score >= minScore)
     .sort((a, b) => b.score - a.score)
     .slice(0, maxItems);

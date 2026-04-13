@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip, Globe, Palette } from "lucide-react";
+import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip, Globe, Palette, Settings, Target } from "lucide-react";
 import SystemStatus from "./SystemStatus";
 
 type Message = {
@@ -93,29 +93,23 @@ type PersonaKey = keyof typeof PERSONAS;
 
 // --- COMPONENTS (Day 11) ---
 
-const ReasoningStepper = ({ steps: rawSteps, isDark, activePersonaId, ui }: { steps: any, isDark: boolean, activePersonaId: PersonaKey, ui: any }) => {
-  let steps: any[] = [];
-  if (Array.isArray(rawSteps)) {
-    steps = rawSteps;
-  } else if (typeof rawSteps === "string") {
-    try { steps = JSON.parse(rawSteps); } catch { steps = []; }
-  }
-  if (!steps || steps.length === 0) return null;
+const ReasoningStepper = ({ steps, isDark, ui, activePersonaId }: { steps: any[], isDark: boolean, ui: any, activePersonaId?: string }) => {
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
 
-  const nodeIcons: Record<string, any> = {
-    memory: <Layers size={14} />,
-    planner: <Check size={14} />,
+  const nodeIcons: Record<string, React.ReactNode> = {
+    memory: <Globe size={14} />,
+    planner: <Layers size={14} />,
     research: <Globe size={14} />,
     executor: <Terminal size={14} />,
     direct: <Square size={14} />,
   };
 
   const nodeLabels: Record<string, string> = {
-    memory: "Context Retrieval",
-    planner: "Strategic Planning",
-    research: "Live Web Research",
-    executor: "Generation Engine",
-    direct: "Direct Response",
+    memory: "Context Analysis",
+    planner: "Task Deconstruction",
+    research: "Data Retrieval",
+    executor: "Synthesis Engine",
+    direct: "Direct Mode",
   };
 
   return (
@@ -124,47 +118,102 @@ const ReasoningStepper = ({ steps: rawSteps, isDark, activePersonaId, ui }: { st
         <div style={{ padding: "4px 8px", borderRadius: 6, background: ui.accent, color: "#fff", fontSize: 9, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em" }}>
           Reasoning Flow
         </div>
+        <div style={{ fontSize: 9, color: ui.subtle, fontWeight: 600 }}>Click steps for details</div>
       </div>
       
-      <div style={{ display: "grid", gap: 16, position: "relative" }}>
+      <div style={{ display: "grid", gap: 12, position: "relative" }}>
         {/* Connection Line */}
-        <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 2, background: ui.panelBorder, opacity: 0.5 }} />
+        <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 2, background: ui.panelBorder, opacity: 0.3 }} />
 
         {steps.map((step, idx) => {
+          const stepId = step.id || `step_${idx}`;
+          const isExpanded = expandedStepId === stepId;
           const isActive = step.status === "active";
           const isCompleted = step.status === "completed";
           const icon = nodeIcons[step.node] || <Code size={14} />;
 
           return (
             <motion.div 
-              key={step.id || idx}
+              key={stepId}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               style={{ display: "flex", gap: 12, alignItems: "flex-start", position: "relative", zIndex: 1 }}
             >
-              <div style={{ 
-                width: 24, 
-                height: 24, 
-                borderRadius: "50%", 
-                background: isCompleted ? "#22c55e" : (isActive ? ui.accent : ui.controlBg),
-                border: `2px solid ${isActive ? ui.accent : ui.panelBorder}`,
-                display: "flex", 
-                alignItems: "center", 
-                justifyContent: "center",
-                color: (isCompleted || isActive) ? "#fff" : ui.subtle,
-                boxShadow: isActive ? `0 0 12px ${ui.accent}` : "none",
-                transition: "all 0.3s"
-              }}>
+              <div 
+                onClick={() => setExpandedStepId(isExpanded ? null : stepId)}
+                style={{ 
+                  width: 24, 
+                  height: 24, 
+                  borderRadius: "50%", 
+                  background: isCompleted ? "#22c55e" : (isActive ? ui.accent : ui.controlBg),
+                  border: `2px solid ${isActive ? ui.accent : ui.panelBorder}`,
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "center",
+                  color: (isCompleted || isActive) ? "#fff" : ui.subtle,
+                  boxShadow: isActive ? `0 0 12px ${ui.accent}` : "none",
+                  transition: "all 0.3s",
+                  cursor: "pointer"
+                }}
+              >
                 {isCompleted ? <Check size={14} strokeWidth={3} /> : (isActive ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>{icon}</motion.div> : icon)}
               </div>
               
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? ui.accent : ui.text, display: "flex", alignItems: "center", gap: 6 }}>
+                <div 
+                  onClick={() => setExpandedStepId(isExpanded ? null : stepId)}
+                  style={{ fontSize: 13, fontWeight: 700, color: isActive ? ui.accent : ui.text, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                >
                   {nodeLabels[step.node] || step.node.toUpperCase()}
                   {isActive && <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>...</motion.span>}
+                  {step.output && (
+                    <div style={{ marginLeft: "auto", opacity: 0.4 }}>
+                       {isExpanded ? <X size={10} /> : <div style={{ fontSize: 8 }}>VIEW</div>}
+                    </div>
+                  )}
                 </div>
-                {step.output && (
-                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", maxHeight: 60, overflow: "hidden", textOverflow: "ellipsis" }}>
+
+                <AnimatePresence>
+                  {isExpanded && step.output && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div style={{ 
+                        marginTop: 8, 
+                        padding: 12, 
+                        background: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.5)", 
+                        borderRadius: 12, 
+                        border: `1px solid ${ui.panelBorder}`,
+                        fontSize: 11,
+                        lineHeight: 1.5,
+                        color: ui.text,
+                        whiteSpace: "pre-wrap",
+                        position: "relative"
+                      }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(step.output);
+                          }}
+                          style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", color: ui.accent, cursor: "pointer", opacity: 0.6 }}
+                          title="Copy details"
+                        >
+                          <Copy size={12} />
+                        </button>
+                        {step.output}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {!isExpanded && step.output && (
+                  <div 
+                    onClick={() => setExpandedStepId(stepId)}
+                    style={{ fontSize: 11, opacity: 0.5, marginTop: 4, fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "200px", cursor: "pointer" }}
+                  >
                     {step.output}
                   </div>
                 )}
@@ -587,6 +636,16 @@ export default function ChatClient() {
   const [customAccentColor, setCustomAccentColor] = useState<string>("");
   const [isGlassmorphic, setIsGlassmorphic] = useState<boolean>(false);
   const [showThemeSettings, setShowThemeSettings] = useState(false);
+  
+  const [showInfraSettings, setShowInfraSettings] = useState(false);
+  const [infraKeys, setInfraKeys] = useState<{ openai: string; anthropic: string }>({ openai: "", anthropic: "" });
+  const [infraEndpoints, setInfraEndpoints] = useState<{ ollamaUrl: string }>({ ollamaUrl: "" });
+  const [isInfraSaving, setIsInfraSaving] = useState(false);
+
+  // Context Steering (Day 11/Fas 9)
+  const [showContextSteering, setShowContextSteering] = useState(false);
+  const [steeringRules, setSteeringRules] = useState({ focus: "", exclude: "", instructions: "" });
+  const [isSteeringSaving, setIsSteeringSaving] = useState(false);
 
   // Load custom theme settings
   useEffect(() => {
@@ -650,6 +709,17 @@ export default function ChatClient() {
       setModels(m);
       if (dm) setDefaultModel(dm);
       
+      try {
+        const setRes = await fetch(`${apiBaseUrl}/api/settings`, { headers: demoToken ? { Authorization: `Bearer ${demoToken}` } : {} });
+        const setData = await setRes.json();
+        if (setData.success) {
+          setInfraKeys({ openai: setData.apiKeys?.openai || "", anthropic: setData.apiKeys?.anthropic || "" });
+          setInfraEndpoints({ ollamaUrl: setData.endpoints?.ollamaUrl || "" });
+        }
+      } catch (e) {
+        console.error("Failed to load infra settings", e);
+      }
+      
       let saved: Session[] = [];
       try {
         console.log("[Day 11] Fetching secure sessions from backend API...");
@@ -701,6 +771,29 @@ export default function ChatClient() {
     navigator.clipboard.writeText(text);
     addNotification("Copied to clipboard", "success");
   };
+
+  async function saveInfraSettings() {
+    setIsInfraSaving(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/settings`, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json", ...(demoToken ? { Authorization: `Bearer ${demoToken}` } : {}) }, 
+        body: JSON.stringify({ apiKeys: infraKeys, endpoints: infraEndpoints }) 
+      });
+      const data = await res.json();
+      if (data.success) {
+        addNotification("Infrastructure settings saved", "success");
+        setShowInfraSettings(false);
+        const { models: m } = await fetchModels(apiBaseUrl, demoToken);
+        setModels(m);
+      } else {
+        addNotification("Failed to save settings", "error");
+      }
+    } catch(e) {
+      addNotification("Error saving settings", "error");
+    }
+    setIsInfraSaving(false);
+  }
 
   // Helper functions
   function patchSession(sessionId: string, updater: (session: Session) => Session) {
@@ -1310,6 +1403,50 @@ export default function ChatClient() {
     } catch (e) { addNotification("Duplicate failed", "error"); }
   }
 
+  // Load context steering when active session changes
+  useEffect(() => {
+    if (activeSession && activeSession.contextSteering) {
+      try {
+        const rules = JSON.parse(activeSession.contextSteering);
+        setSteeringRules({
+          focus: rules.focus?.join(", ") || "",
+          exclude: rules.exclude?.join(", ") || "",
+          instructions: rules.instructions || ""
+        });
+      } catch (e) {
+        console.error("Failed to parse steering rules", e);
+      }
+    } else {
+      setSteeringRules({ focus: "", exclude: "", instructions: "" });
+    }
+  }, [activeSessionId, activeSession?.contextSteering]);
+
+  async function saveSteeringSettings() {
+    if (!activeSessionId) return;
+    setIsSteeringSaving(true);
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSessionId}/steering`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          steering: {
+            focus: steeringRules.focus.split(",").map(s => s.trim()).filter(Boolean),
+            exclude: steeringRules.exclude.split(",").map(s => s.trim()).filter(Boolean),
+            instructions: steeringRules.instructions
+          }
+        })
+      });
+      if (resp.ok) {
+        addNotification("Context focus updated", "success");
+        setShowContextSteering(false);
+      }
+    } catch (e) {
+      addNotification("Failed to save context focus", "error");
+    } finally {
+      setIsSteeringSaving(false);
+    }
+  }
+
   function getOptimalModelForPersona(personaKey: PersonaKey) {
     const persona = PERSONAS[personaKey];
     if (!persona.keywords) return null;
@@ -1433,7 +1570,124 @@ export default function ChatClient() {
                 >
                   <Palette size={14} />
                 </button>
+                <div style={{ width: 1, backgroundColor: ui.panelBorder, margin: "0 4px" }} />
+                <button 
+                  title="Infrastructure & API Keys"
+                  onClick={() => { setShowInfraSettings(!showInfraSettings); setShowThemeSettings(false); }}
+                  style={{
+                    width: 24, height: 24, borderRadius: 8, background: showInfraSettings ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent", border: "none", color: ui.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                    boxShadow: showInfraSettings ? `0 0 10px ${ui.accent}44` : "none"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background = showInfraSettings ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent"}
+                >
+                  <Settings size={14} />
+                </button>
+                <div style={{ width: 1, backgroundColor: ui.panelBorder, margin: "0 4px" }} />
+                <button 
+                  title="Advanced Context Steering & Focus"
+                  onClick={() => { setShowContextSteering(!showContextSteering); setShowThemeSettings(false); setShowInfraSettings(false); }}
+                  style={{
+                    width: 24, height: 24, borderRadius: 8, background: showContextSteering ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent", border: "none", color: ui.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s",
+                    boxShadow: showContextSteering ? `0 0 10px ${ui.accent}44` : "none"
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background = showContextSteering ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : "transparent"}
+                >
+                  <Target size={14} />
+                </button>
               </div>
+              
+              {/* Context Steering Popover */}
+              <AnimatePresence>
+                {showContextSteering && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    style={{ position: "absolute", top: "100%", right: 0, marginTop: 10, width: 280, background: ui.panelBg, backdropFilter: "blur(24px)", border: `1px solid ${ui.panelBorder}`, borderRadius: 16, padding: 18, boxShadow: "0 10px 40px rgba(0,0,0,0.4)", zIndex: 200, WebkitBackdropFilter: "blur(24px)" }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 900, color: ui.text, marginBottom: 4 }}>Context Steering</div>
+                    <div style={{ fontSize: 11, color: ui.subtle, marginBottom: 16 }}>Fine-tune AI memory focus</div>
+
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>Focus Keywords</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. typescript, schema, api" 
+                        value={steeringRules.focus}
+                        onChange={e => setSteeringRules(v => ({ ...v, focus: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>Excluded Topics</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. baking, pets" 
+                        value={steeringRules.exclude}
+                        onChange={e => setSteeringRules(v => ({ ...v, exclude: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
+                      />
+                    </div>
+
+                    <button 
+                      onClick={saveSteeringSettings}
+                      disabled={isSteeringSaving || !activeSessionId}
+                      style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: ui.accent, color: "#fff", fontWeight: 700, cursor: (isSteeringSaving || !activeSessionId) ? "wait" : "pointer", opacity: (isSteeringSaving || !activeSessionId) ? 0.7 : 1 }}
+                    >
+                      {isSteeringSaving ? "Updating context..." : "Apply Steering"}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Infra Settings Popover */}
+              <AnimatePresence>
+                {showInfraSettings && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    style={{ position: "absolute", top: "100%", right: 0, marginTop: 10, width: 320, background: ui.panelBg, backdropFilter: "blur(24px)", border: `1px solid ${ui.panelBorder}`, borderRadius: 16, padding: 16, boxShadow: "0 10px 40px rgba(0,0,0,0.4)", zIndex: 200, WebkitBackdropFilter: "blur(24px)" }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, color: ui.text, marginBottom: 12 }}>Cloud Infrastructure</div>
+                    
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>OpenAI API Key</label>
+                      <input 
+                        type="password" 
+                        placeholder="sk-..." 
+                        value={infraKeys.openai}
+                        onChange={e => setInfraKeys(v => ({ ...v, openai: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>Anthropic API Key</label>
+                      <input 
+                        type="password" 
+                        placeholder="sk-ant-..." 
+                        value={infraKeys.anthropic}
+                        onChange={e => setInfraKeys(v => ({ ...v, anthropic: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
+                      />
+                    </div>
+                    
+                    <button 
+                      onClick={saveInfraSettings}
+                      disabled={isInfraSaving}
+                      style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: ui.accent, color: "#fff", fontWeight: 700, cursor: isInfraSaving ? "wait" : "pointer", opacity: isInfraSaving ? 0.7 : 1 }}
+                    >
+                      {isInfraSaving ? "Saving..." : "Save Settings"}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Theme Settings Popover */}
               <AnimatePresence>
@@ -1667,11 +1921,22 @@ export default function ChatClient() {
                 <select 
                   value={activeSession.model} 
                   onChange={e => updateActiveSessionField("model", e.target.value)} 
-                  style={{ background: "none", border: "none", color: ui.accent, fontSize: 11, fontWeight: 800, outline: "none", cursor: "pointer", textTransform: "uppercase" }}
+                  style={{ background: "none", border: "none", color: ui.accent, fontSize: 11, fontWeight: 900, outline: "none", cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.02em" }}
                 >
-                  {models.map(m => (
-                    <option key={m} value={m} style={{ background: ui.panelBg, color: ui.text }}>{m.toUpperCase()}</option>
-                  ))}
+                  {models.filter(m => !m.startsWith("gpt-")).length > 0 && (
+                    <optgroup label="LOCAL OLLAMA MODELS" style={{ background: ui.panelBg, color: ui.subtle, fontSize: 9 }}>
+                      {models.filter(m => !m.startsWith("gpt-")).map(m => (
+                        <option key={m} value={m} style={{ background: ui.panelBg, color: ui.text, fontSize: 11 }}>{m.toUpperCase()}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {models.filter(m => m.startsWith("gpt-")).length > 0 && (
+                    <optgroup label="CLOUD MODELS (OPENAI)" style={{ background: ui.panelBg, color: ui.subtle, fontSize: 9 }}>
+                      {models.filter(m => m.startsWith("gpt-")).map(m => (
+                        <option key={m} value={m} style={{ background: ui.panelBg, color: ui.text, fontSize: 11 }}>{m.toUpperCase()}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
@@ -1680,13 +1945,24 @@ export default function ChatClient() {
                 <div ref={scrollContainerRef} onScroll={handleScroll} className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas, transition: "background 0.3s" }}>
                   <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gap: 16 }}>
                     {activeSession.messages.length === 0 ? (
-                      <div style={{ textAlign: "center", marginTop: 60 }}>
+                      <div style={{ textAlign: "center", marginTop: 40, paddingBottom: 40 }}>
                         {/* Welcome Header */}
-                        <div style={{ marginBottom: 32 }}>
-                          <div style={{ fontSize: 48, marginBottom: 16, animation: "float 4s ease-in-out infinite" }}>🚀</div>
-                          <div style={{ fontSize: 22, fontWeight: 800, color: ui.text, marginBottom: 8 }}>Welcome to EvoFlow</div>
-                          <div style={{ fontSize: 14, color: ui.subtle, maxWidth: 400, margin: "0 auto", lineHeight: 1.6 }}>Your private AI workspace. Ask anything, upload documents, or compare models.</div>
-                        </div>
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          style={{ marginBottom: 40 }}
+                        >
+                          <div style={{ 
+                            width: 80, height: 80, borderRadius: 24, background: `linear-gradient(135deg, ${ui.accent}, ${ui.accent}88)`, margin: "0 auto 24px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, boxShadow: `0 20px 40px ${ui.accent}44`,
+                            animation: "float 4s ease-in-out infinite"
+                          }}>
+                            🚀
+                          </div>
+                          <h2 style={{ fontSize: 28, fontWeight: 900, color: ui.text, marginBottom: 8, letterSpacing: "-0.02em" }}>EvoFlow Intelligence</h2>
+                          <p style={{ fontSize: 15, color: ui.subtle, maxWidth: 450, margin: "0 auto", lineHeight: 1.6, fontWeight: 500 }}>
+                            Hybrid local-cloud intelligence. Use <span style={{ color: ui.text, fontWeight: 700 }}>DIRECT</span> for speed or <span style={{ color: ui.text, fontWeight: 700 }}>MULTI-STEP</span> for deep automated research.
+                          </p>
+                        </motion.div>
 
                         {/* Quick Action Tiles */}
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, maxWidth: 480, margin: "0 auto 32px" }}>

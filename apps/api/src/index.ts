@@ -132,8 +132,25 @@ function getTopicFromMessage(message: string): string {
   return "general";
 }
 
-function getMemorySummary(topic: string): { memoryRunCount: number; memorySummary: string } {
-  const related = memoryByTopic.get(topic) ?? [];
+function getMemorySummary(topic: string, steering?: any): { memoryRunCount: number; memorySummary: string } {
+  let related = memoryByTopic.get(topic) ?? [];
+  
+  if (steering) {
+    // 1. Filter out excluded topics
+    if (steering.exclude && Array.isArray(steering.exclude)) {
+      related = related.filter(r => {
+        const msg = String((r.input as any)?.message || "").toLowerCase();
+        return !steering.exclude.some((term: string) => msg.includes(term.toLowerCase()));
+      });
+    }
+
+    // 2. Focus filtering (if focus is strict)
+    if (steering.focus && Array.isArray(steering.focus) && steering.focus.length > 0) {
+      // In this simple API memory, we'll just prioritize or filter if requested.
+      // For now, let's just ensure we have matches.
+    }
+  }
+
   if (related.length === 0) {
     return {
       memoryRunCount: 0,
@@ -153,9 +170,11 @@ function getMemorySummary(topic: string): { memoryRunCount: number; memorySummar
     .filter(Boolean)
     .join(" | ");
 
+  const steeringNote = steering?.instructions ? `\nNote: ${steering.instructions}` : "";
+
   return {
     memoryRunCount: related.length,
-    memorySummary: `Related previous runs for topic "${topic}": ${preview}`,
+    memorySummary: `Related previous runs for topic "${topic}": ${preview}${steeringNote}`,
   };
 }
 
@@ -865,6 +884,19 @@ app.post(["/sessions/:id/rename", "/api/sessions/:id/rename"], requireAuth, asyn
   }
 });
 
+app.post(["/sessions/:id/steering", "/api/sessions/:id/steering"], requireAuth, async (req, res) => {
+  try {
+    const { steering } = req.body;
+    const session = await prisma.chatSession.update({
+      where: { id: req.params.id },
+      data: { contextSteering: typeof steering === "string" ? steering : JSON.stringify(steering) },
+    });
+    res.json({ success: true, session });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 app.delete(["/sessions/:id", "/api/sessions/:id"], requireAuth, async (req, res) => {
   try {
     await prisma.chatSession.delete({ where: { id: req.params.id } });
@@ -1107,9 +1139,76 @@ app.get(["/runs", "/api/runs"], requireAuth, (_req, res) => {
   });
 });
 
+// --- INFRASTRUCTURE & SETTINGS ---
+app.get(["/settings", "/api/settings"], requireAuth, async (_req, res) => {
+  try {
+    const settings = await prisma.globalSettings.findUnique({ where: { id: "global" } });
+    if (!settings) {
+      return res.json({ success: true, apiKeys: {}, endpoints: {} });
+    }
+    const apiKeys = settings.apiKeys ? JSON.parse(settings.apiKeys) : {};
+    const endpoints = settings.endpoints ? JSON.parse(settings.endpoints) : {};
+    
+    // Mask API keys for security
+    const maskedKeys: Record<string, string> = {};
+    if (apiKeys.openai) maskedKeys.openai = apiKeys.openai.substring(0, 7) + "...";
+    if (apiKeys.anthropic) maskedKeys.anthropic = apiKeys.anthropic.substring(0, 7) + "...";
+
+    res.json({ success: true, apiKeys: maskedKeys, endpoints });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+app.post(["/settings", "/api/settings"], requireAuth, async (req, res) => {
+  try {
+    const { apiKeys, endpoints } = req.body;
+    
+    const existing = await prisma.globalSettings.findUnique({ where: { id: "global" } });
+    const oldKeys = existing?.apiKeys ? JSON.parse(existing.apiKeys) : {};
+    const oldEndpoints = existing?.endpoints ? JSON.parse(existing.endpoints) : {};
+
+    const newKeys = { ...oldKeys };
+    if (apiKeys) {
+       for (const key of Object.keys(apiKeys)) {
+         if (apiKeys[key] && !apiKeys[key].includes("...")) {
+           newKeys[key] = apiKeys[key];
+         } else if (apiKeys[key] === "") {
+           delete newKeys[key]; // Empty string deletes the key
+         }
+       }
+    }
+    
+    const newEndpoints = { ...oldEndpoints };
+    if (endpoints) {
+       for (const key of Object.keys(endpoints)) {
+         newEndpoints[key] = endpoints[key];
+       }
+    }
+
+    const settings = await prisma.globalSettings.upsert({
+      where: { id: "global" },
+      update: { apiKeys: JSON.stringify(newKeys), endpoints: JSON.stringify(newEndpoints) },
+      create: { id: "global", apiKeys: JSON.stringify(newKeys), endpoints: JSON.stringify(newEndpoints) }
+    });
+    res.json({ success: true, settings });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
 app.get(["/ollama/models", "/api/ollama/models"], requireAuth, async (_req, res) => {
   try {
     const models = await getInstalledOllamaModels();
+    
+    // Inject Remote Models if keys exist
+    const settings = await prisma.globalSettings.findUnique({ where: { id: "global" } });
+    const apiKeys = settings?.apiKeys ? JSON.parse(settings.apiKeys) : {};
+    
+    if (apiKeys.openai) {
+      models.push("gpt-4o", "gpt-3.5-turbo");
+    }
+
     res.json({
       success: true,
       items: models,
@@ -1271,7 +1370,19 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
         : demoWorkflows.find((w) => w.mode === "multi-step")!;
 
     const topic = getTopicFromMessage(message);
-    const { memoryRunCount, memorySummary } = getMemorySummary(topic);
+    
+    // Fetch Session Steering (Day 11)
+    let steeringRules: any = null;
+    if (sessionId) {
+      const session = await prisma.chatSession.findUnique({ where: { id: sessionId } });
+      if (session?.contextSteering) {
+        try {
+          steeringRules = JSON.parse(session.contextSteering);
+        } catch (e) {}
+      }
+    }
+
+    const { memoryRunCount, memorySummary } = getMemorySummary(topic, steeringRules);
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache");
@@ -1313,6 +1424,7 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
       memoryRunCount,
       memorySummary,
       steps: JSON.stringify(steps),
+      contextSteering: steeringRules ? JSON.stringify(steeringRules) : null,
       createdAt: now,
       updatedAt: now,
     };

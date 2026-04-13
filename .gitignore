@@ -9,3 +9,7 @@ apps/api/generated
 pdftest
 apps/api/prisma/dev.db
 apps/api/uploads/
+dev.db
+dev.db-journal
+dev.db-shm
+dev.db-wal
