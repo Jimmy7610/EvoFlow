@@ -65,22 +65,26 @@ const PERSONAS = {
   general: {
     name: "General",
     icon: "🏠",
-    prompt: "You are a helpful and concise AI assistant. Provide clear and accurate answers."
+    prompt: "You are a helpful and concise AI assistant. Provide clear and accurate answers.",
+    keywords: ["llama3", "mistral", "gemma"]
   },
   coder: {
     name: "Code Expert",
     icon: "💻",
-    prompt: "You are an expert software engineer. Focus on clean code, SOLID principles, design patterns, and efficient algorithms. Always provide explanation alongside code."
+    prompt: "You are an expert software engineer. Focus on clean code, SOLID principles, design patterns, and efficient algorithms. Always provide explanation alongside code.",
+    keywords: ["coder", "code", "starcoder", "deepseek"]
   },
   security: {
     name: "Security Lead",
     icon: "🛡️",
-    prompt: "You are a senior cybersecurity professional. Focus on vulnerability analysis, threat modeling, and secure coding practices. Always highlight potential security risks."
+    prompt: "You are a senior cybersecurity professional. Focus on vulnerability analysis, threat modeling, and secure coding practices. Always highlight potential security risks.",
+    keywords: ["security", "mistral"]
   },
   creative: {
     name: "Architect",
     icon: "🏛️",
-    prompt: "You are a creative systems architect. Think big picture, focus on scalability, modularity, and innovative problem solving."
+    prompt: "You are a creative systems architect. Think big picture, focus on scalability, modularity, and innovative problem solving.",
+    keywords: ["30b", "70b", "architect", "llama3.1"]
   }
 };
 
@@ -481,6 +485,7 @@ export default function ChatClient() {
   const [previewDocData, setPreviewDocData] = useState<any | null>(null);
   const [isComparisonMode, setIsComparisonMode] = useState(false);
   const [comparisonModel, setComparisonModel] = useState<string>("");
+  const [comparisonPersonaId, setComparisonPersonaId] = useState<PersonaKey>("general");
   const [comparisonMessages, setComparisonMessages] = useState<Message[]>([]);
   const [isComparisonSending, setIsComparisonSending] = useState(false);
   const [devErrorText, setDevErrorText] = useState("");
@@ -772,7 +777,7 @@ export default function ChatClient() {
           modelSelection: "manual", 
           model: comparisonModel, 
           transport: "stream",
-          systemPrompt: PERSONAS[activePersonaId].prompt
+          systemPrompt: PERSONAS[comparisonPersonaId].prompt
         }),
       });
       if (!resp.ok || !resp.body) throw new Error("Comparison request failed");
@@ -795,6 +800,7 @@ export default function ChatClient() {
   async function handleSend() {
     if (!activeSession || !input.trim() || isSending) return;
     const userText = input.trim();
+    setInput("");
     if (isComparisonMode) handleSendComparison(userText);
     const now = new Date().toISOString();
     const userMessage: Message = { id: uid("user"), role: "user", content: userText, createdAt: now, model: activeSession.model, modelSelection: activeSession.modelSelection, transport: activeSession.transport };
@@ -1050,6 +1056,40 @@ export default function ChatClient() {
         addNotification("Session duplicated", "success");
       }
     } catch (e) { addNotification("Duplicate failed", "error"); }
+  }
+
+  function getOptimalModelForPersona(personaKey: PersonaKey) {
+    const persona = PERSONAS[personaKey];
+    if (!persona.keywords) return null;
+    
+    // Search for a model name that contains any of the keywords
+    for (const kw of persona.keywords) {
+      const found = models.find(m => m.toLowerCase().includes(kw.toLowerCase()));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function handlePersonaChange(key: PersonaKey) {
+    setActivePersonaId(key);
+    
+    // Smart Switch Logic (Day 10)
+    const bestModel = getOptimalModelForPersona(key);
+    if (bestModel && activeSession && activeSession.model !== bestModel) {
+      updateActiveSessionField("model", bestModel);
+      addNotification(`Optimized for ${bestModel.toUpperCase()}`, "success");
+    }
+  }
+
+  function handleComparisonPersonaChange(key: PersonaKey) {
+    setComparisonPersonaId(key);
+    
+    // Smart Switch Logic (Day 10)
+    const bestModel = getOptimalModelForPersona(key);
+    if (bestModel && comparisonModel !== bestModel) {
+      setComparisonModel(bestModel);
+      addNotification(`Comparison optimized for ${bestModel.toUpperCase()}`, "success");
+    }
   }
 
   if (isLoadingModels) {
@@ -1353,6 +1393,46 @@ export default function ChatClient() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Comparison Persona Selector (Day 10) */}
+                    <div style={{ padding: "0 12px 12px 12px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" }}>
+                      {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
+                        const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
+                        const isOptimized = comparisonModel === bestModelMatch;
+                        
+                        return (
+                          <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                            <button
+                              onClick={() => handleComparisonPersonaChange(key as PersonaKey)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                padding: "4px 10px",
+                                borderRadius: 100,
+                                background: comparisonPersonaId === key ? ui.accent : "transparent",
+                                color: comparisonPersonaId === key ? "#fff" : ui.subtle,
+                                border: `1px solid ${comparisonPersonaId === key ? ui.accent : ui.panelBorder}`,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                transition: "all 0.2s"
+                              }}
+                            >
+                              <span style={{ fontSize: 12 }}>{p.icon}</span>
+                              {p.name}
+                              {isOptimized && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 4px #22c55e" }} />}
+                            </button>
+                            {isOptimized && (
+                              <span style={{ fontSize: 8, opacity: 0.5, fontWeight: 700, color: ui.accent }}>
+                                (Opt)
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                     <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "grid", gap: 12 }}>
                       {comparisonMessages.map(m => (
                         <div key={m.id} style={{ padding: 10, borderRadius: 12, border: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
@@ -1368,36 +1448,42 @@ export default function ChatClient() {
               <div style={{ padding: "10px 20px 20px 20px", borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
                  <div style={{ maxWidth: 900, margin: "0 auto" }}>
                     
-                    {/* Persona Selector (Day 9) */}
+                    {/* Persona Selector (Day 10) */}
                     <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
-                      {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => (
-                        <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                          <button
-                            onClick={() => setActivePersonaId(key)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: "6px 14px",
-                              borderRadius: 100,
-                              background: activePersonaId === key ? ui.accent : "transparent",
-                              color: activePersonaId === key ? "#fff" : ui.subtle,
-                              border: `1px solid ${activePersonaId === key ? ui.accent : ui.panelBorder}`,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap",
-                              transition: "all 0.2s"
-                            }}
-                          >
-                            <span style={{ fontSize: 14 }}>{p.icon}</span>
-                            {p.name}
-                          </button>
-                          <span style={{ fontSize: 9, opacity: 0.5, fontWeight: 700, color: activePersonaId === key ? ui.accent : ui.subtle }}>
-                             ({activeSession.model || "llama3"})
-                          </span>
-                        </div>
-                      ))}
+                      {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
+                        const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
+                        const isOptimized = activeSession?.model === bestModelMatch;
+                        
+                        return (
+                          <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                            <button
+                              onClick={() => handlePersonaChange(key as PersonaKey)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "6px 14px",
+                                borderRadius: 100,
+                                background: activePersonaId === key ? ui.accent : "transparent",
+                                color: activePersonaId === key ? "#fff" : ui.subtle,
+                                border: `1px solid ${activePersonaId === key ? ui.accent : ui.panelBorder}`,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                                transition: "all 0.2s"
+                              }}
+                            >
+                              <span style={{ fontSize: 14 }}>{p.icon}</span>
+                              {p.name}
+                              {isOptimized && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} title="Optimization Active" />}
+                            </button>
+                            <span style={{ fontSize: 9, opacity: 0.5, fontWeight: 700, color: activePersonaId === key ? ui.accent : ui.subtle }}>
+                               {isOptimized ? `(Optimized: ${activeSession.model})` : `(${activeSession?.model || "llama3"})`}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Attachment Chips */}
