@@ -34,6 +34,10 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 - [x] **System Health Dashboard & Observability**
 - [x] **Day 11: Contextual Memory Injection**: Automated retrieval of relevant project files based on current chat intent.
 
+### Phase 5: Web Capability Layer (The "Live" Era)
+- [x] **Zero-Config Search Tool**: Built-in DuckDuckGo scraper using axios/cheerio.
+- [x] **Live Web Research Integration**: Added to the agentic planner and visualized in the Reasoning Stepper.
+
 
 ---
 

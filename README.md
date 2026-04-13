@@ -36,10 +36,11 @@ EvoFlow has recently undergone a major structural and visual transformation to b
   - **Independent Persona Selection**: Full control over system prompts for both primary and secondary chat panes.
   - **Intelligent Model Matching**: Automated detection of "best match" models for each persona. If you select **Code Expert**, EvoFlow automatically activates high-performance coding models like `qwen3-coder:30b` if they are installed locally.
 - **Advanced Intelligence (Day 11)**:
-  - **Battle Mode 2.0**: Enhanced model benchmarking with persona-level optimization and real-time comparisons.
   - **Reasoning Flow Visualizer**: High-fidelity, animated transparency into multi-agent workflows (Memory, Planning, Execution).
   - **System Health Monitor**: Real-time observability of backend services and model status.
-
+- **Web Capability Layer (Phase 5)**:
+  - **Zero-Config Search**: Seamlessly retrieve real-time news, weather, and current events without needing API keys using the built-in DuckDuckGo scraper.
+  - **Live Web Research Integration**: Visualized seamlessly in the Reasoning Flow complete with a dynamic Globe icon.
 
 
 ### 📁 Session & Export Power (Day 7)
