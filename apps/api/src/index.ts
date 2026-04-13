@@ -712,7 +712,13 @@ async function getDevControlsStatus(): Promise<DevStatusPayload> {
 
   let ollamaRunning = false;
   try {
-    const ollamaResp = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { method: "GET" });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 800);
+    const ollamaResp = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { 
+      method: "GET",
+      signal: controller.signal 
+    });
+    clearTimeout(timeout);
     ollamaRunning = ollamaResp.ok;
   } catch {
     ollamaRunning = false;
