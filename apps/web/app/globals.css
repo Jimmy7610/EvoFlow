@@ -68,3 +68,12 @@ td {
   padding: 0.65rem;
   border-bottom: 1px solid #e5e7eb;
 }
+
+/* Hide scrollbar but keep scroll functionality */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}

@@ -1546,7 +1546,7 @@ export default function ChatClient() {
 
               {/* Messages Container */}
               <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas }}>
+                <div ref={scrollContainerRef} onScroll={handleScroll} className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas }}>
                   <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gap: 16 }}>
                     {activeSession.messages.length === 0 ? (
                       <div style={{ textAlign: "center", marginTop: 100, opacity: 0.4 }}>
@@ -1621,7 +1621,7 @@ export default function ChatClient() {
                     </div>
 
                     {/* Comparison Persona Selector (Day 10) */}
-                    <div style={{ padding: "0 12px 12px 12px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" }}>
+                    <div style={{ padding: "0 12px 12px 12px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
                         const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
                         const isOptimized = comparisonModel === bestModelMatch;
@@ -1682,7 +1682,7 @@ export default function ChatClient() {
                  <div style={{ maxWidth: 900, margin: "0 auto" }}>
                     
                     {/* Persona Selector (Day 10) */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", paddingBottom: 4 }}>
                       {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
                         const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
                         const isOptimized = activeSession?.model === bestModelMatch;
