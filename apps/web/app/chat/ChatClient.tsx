@@ -496,7 +496,7 @@ const SessionItem = memo(({
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.title}</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: ui.text, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.4 }}>{session.title}</div>
           <div style={{ fontSize: 10, color: ui.subtle, marginTop: 4 }}>{session.messages.length} messages · {session.workflowMode}</div>
         </div>
         
