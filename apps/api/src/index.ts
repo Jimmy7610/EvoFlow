@@ -588,7 +588,7 @@ async function streamAgentOutput(
     const streamed = await streamOllama(
       finalPromptWithSearch,
       model,
-      sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
+      sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. If the user asks for a specific number of items (like 5 news articles), you MUST extract and summarize exactly that number from the context. Do not truncate the response. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       onChunk,
       images
     );
