@@ -434,6 +434,19 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
   const source = String(message ?? "").trim();
   if (!source) return "";
 
+  const lower = source.toLowerCase();
+  const needsWeb = lower.includes("nyheter") || lower.includes("väder") || lower.includes("news") || 
+                  lower.includes("nätet") || lower.includes("internet") || lower.includes("aftonbladet") ||
+                  lower.includes("latest") || lower.includes("recent") || lower.includes("today");
+
+  let searchContext = "";
+  if (needsWeb) {
+    const results = await webSearch(source);
+    if (results.length > 0) {
+      searchContext = `[Real-Time Data]:\n${results.map(r => `- ${r.title}: ${r.snippet}`).join("\n")}\n\n`;
+    }
+  }
+
   try {
     const prompt = [
       "Follow the instruction exactly.",
@@ -441,13 +454,13 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
       "Do not explain.",
       "Do not add quotation marks.",
       "",
-      `Instruction: ${source}`,
+      searchContext ? `${searchContext}Instruction: ${source}` : `Instruction: ${source}`,
     ].join("\n");
 
     const streamed = await streamOllama(
       prompt,
       model,
-      systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      systemPrompt || `You are a precise assistant for direct-mode tasks. Use any provided [Real-Time Data] to answer accurately. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
       onChunk,
       images
     );
