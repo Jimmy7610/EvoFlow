@@ -1,6 +1,8 @@
 
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 type Workflow = {
   id: string;
   name: string;

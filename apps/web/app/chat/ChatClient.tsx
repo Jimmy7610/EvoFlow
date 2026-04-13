@@ -583,6 +583,7 @@ export default function ChatClient() {
   const [isBulkDeleteConfirming, setIsBulkDeleteConfirming] = useState(false);
   const [activePersonaId, setActivePersonaId] = useState<PersonaKey>("general");
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showDevControls, setShowDevControls] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -888,7 +889,7 @@ export default function ChatClient() {
     if (!activeSession) return;
     setIsComparisonSending(true);
     const tempId = uid("msg");
-    const newMsg: Message = { id: tempId, sessionId: activeSession.id as any, role: "assistant", content: "", model: comparisonModel, createdAt: new Date().toISOString() };
+    const newMsg: Message = { id: tempId, role: "assistant", content: "", model: comparisonModel, createdAt: new Date().toISOString() };
     setComparisonMessages((prev) => [...prev, newMsg]);
     try {
       const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/chat`, {
@@ -1101,7 +1102,7 @@ export default function ChatClient() {
       } else {
         const isConnError = error instanceof TypeError && error.message.includes("fetch");
         setErrorText(isConnError ? "Connection Lost: EvoFlow API or Ollama is offline." : (error instanceof Error ? error.message : "Chat failed"));
-        if (isConnError) setIsOllamaOnline(false);
+        if (isConnError) console.warn("[EvoFlow] Connection error — API or Ollama may be offline.");
       }
     } finally {
       setIsSending(false);
@@ -1392,16 +1393,48 @@ export default function ChatClient() {
             </div>
 
             {/* Font Control */}
-            <div style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 10, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: "4px 8px", borderRadius: 10, border: `1px solid ${ui.panelBorder}` }}>
-               <button onClick={() => setFontSize(Math.max(12, fontSize - 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>-</button>
+            <div title="Adjust chat font size" style={{ display: "flex", alignItems: "center", gap: 4, marginRight: 10, background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: "4px 8px", borderRadius: 10, border: `1px solid ${ui.panelBorder}` }}>
+               <button title="Decrease font size" onClick={() => setFontSize(Math.max(12, fontSize - 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>-</button>
                <span style={{ fontSize: 10, fontWeight: 800, color: ui.muted, width: 14, textAlign: "center" }}>A</span>
-               <button onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>+</button>
+               <button title="Increase font size" onClick={() => setFontSize(Math.min(22, fontSize + 1))} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", padding: "0 4px", fontSize: 14, fontWeight: 800 }}>+</button>
             </div>
 
-            <button onClick={() => handleDevControl("start")} style={{ padding: "6px 12px", borderRadius: 10, background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Start</button>
-            <button onClick={() => handleDevControl("stop")} style={{ padding: "6px 12px", borderRadius: 10, background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer" }}>Avsluta</button>
+            {/* Dev Controls (Collapsible) */}
+            <div style={{ position: "relative" }}>
+              <button 
+                title="Engine controls — Start/Stop background worker" 
+                onClick={() => setShowDevControls(!showDevControls)} 
+                style={{ 
+                  padding: "6px 12px", 
+                  borderRadius: 10, 
+                  background: showDevControls ? ui.accent : (isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)"), 
+                  color: showDevControls ? "#fff" : ui.subtle, 
+                  fontWeight: 700, 
+                  border: `1px solid ${showDevControls ? ui.accent : ui.panelBorder}`, 
+                  cursor: "pointer", 
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  transition: "all 0.2s"
+                }}
+              >
+                ⚙️ Engine
+              </button>
+              {showDevControls && (
+                <div style={{ 
+                  position: "absolute", top: "100%", right: 0, marginTop: 6, 
+                  background: ui.panelBg, border: `1px solid ${ui.panelBorder}`, 
+                  borderRadius: 12, padding: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.3)", 
+                  zIndex: 100, display: "flex", gap: 6, whiteSpace: "nowrap" 
+                }}>
+                  <button title="Start background worker process" onClick={() => { handleDevControl("start"); setShowDevControls(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "linear-gradient(180deg, #16a34a 0%, #15803d 100%)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", fontSize: 12 }}>Start</button>
+                  <button title="Stop background worker process" onClick={() => { handleDevControl("stop"); setShowDevControls(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: isDark ? "rgba(127, 29, 29, 0.85)" : "#7f1d1d", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", fontSize: 12 }}>Stop</button>
+                </div>
+              )}
+            </div>
             <div style={{ width: 1, height: 20, background: ui.panelBorder, margin: "0 4px" }} />
-            <button onClick={() => setIsComparisonMode(!isComparisonMode)} style={{ padding: "6px 12px", borderRadius: 10, background: isComparisonMode ? ui.accent : ui.actionBg, color: isComparisonMode ? "#fff" : ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isComparisonMode ? "Battle: ON" : "Battle Mode"}</button>
+            <button title="Compare two AI models side by side" onClick={() => setIsComparisonMode(!isComparisonMode)} style={{ padding: "6px 12px", borderRadius: 10, background: isComparisonMode ? ui.accent : ui.actionBg, color: isComparisonMode ? "#fff" : ui.text, fontWeight: 700, border: `1px solid ${ui.panelBorder}`, cursor: "pointer" }}>{isComparisonMode ? "Battle: ON" : "⚔️ Battle"}</button>
           </div>
         </div>
       </div>
@@ -1447,8 +1480,8 @@ export default function ChatClient() {
           {/* Files section in sidebar */}
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${ui.panelBorder}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Context</span>
-              <button onClick={() => docInputRef.current?.click()} style={{ fontSize: 10, color: ui.accent, background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+              <span style={{ fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>📎 Documents</span>
+              <button title="Upload a file for AI context" onClick={() => docInputRef.current?.click()} style={{ fontSize: 10, color: ui.accent, background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>+ Upload</button>
             </div>
             <div style={{ display: "grid", gap: 4 }}>
               {activeSession?.documents?.map(doc => (
@@ -1527,11 +1560,12 @@ export default function ChatClient() {
           {activeSession && (
             <>
               {/* Toolbar */}
-              <div style={{ padding: "8px 16px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 12, background: isDark ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.02)" }}>
-                <select value={activeSession.workflowMode} onChange={e => updateActiveSessionField("workflowMode", e.target.value as any)} style={{ background: "none", border: "none", color: ui.subtle, fontSize: 11, fontWeight: 700, outline: "none", cursor: "pointer" }}>
+              <div style={{ padding: "8px 16px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", gap: 12, alignItems: "center", background: isDark ? "rgba(0,0,0,0.1)" : "rgba(0,0,0,0.02)" }}>
+                <select title="Direct = Fast single answer | Multi-step = Deep analysis with research" value={activeSession.workflowMode} onChange={e => updateActiveSessionField("workflowMode", e.target.value as any)} style={{ background: "none", border: "none", color: ui.subtle, fontSize: 11, fontWeight: 700, outline: "none", cursor: "pointer" }}>
                   <option value="direct">DIRECT MODE</option>
                   <option value="multi-step">MULTI-STEP MODE</option>
                 </select>
+                <span style={{ fontSize: 10, color: ui.subtle, opacity: 0.5, fontWeight: 500 }}>{activeSession.workflowMode === "direct" ? "Fast answer" : "Deep analysis + web research"}</span>
                 <div style={{ width: 1, height: 12, background: ui.panelBorder, alignSelf: "center" }} />
                 <select 
                   value={activeSession.model} 
@@ -1549,10 +1583,78 @@ export default function ChatClient() {
                 <div ref={scrollContainerRef} onScroll={handleScroll} className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas }}>
                   <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gap: 16 }}>
                     {activeSession.messages.length === 0 ? (
-                      <div style={{ textAlign: "center", marginTop: 100, opacity: 0.4 }}>
-                        <div style={{ fontSize: 40, marginBottom: 16 }}>💬</div>
-                        <div style={{ fontWeight: 700 }}>Start a new conversation</div>
-                        <div style={{ fontSize: 13, marginTop: 8 }}>EvoFlow is ready to assist you locally.</div>
+                      <div style={{ textAlign: "center", marginTop: 60 }}>
+                        {/* Welcome Header */}
+                        <div style={{ marginBottom: 32 }}>
+                          <div style={{ fontSize: 48, marginBottom: 16, animation: "float 4s ease-in-out infinite" }}>🚀</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: ui.text, marginBottom: 8 }}>Welcome to EvoFlow</div>
+                          <div style={{ fontSize: 14, color: ui.subtle, maxWidth: 400, margin: "0 auto", lineHeight: 1.6 }}>Your private AI workspace. Ask anything, upload documents, or compare models.</div>
+                        </div>
+
+                        {/* Quick Action Tiles */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, maxWidth: 480, margin: "0 auto 32px" }}>
+                          {[
+                            { icon: "💬", label: "Ask a question", hint: "Chat with your local AI", action: () => textareaRef.current?.focus() },
+                            { icon: "📎", label: "Upload a document", hint: "PDF or text for AI context", action: () => docInputRef.current?.click() },
+                            { icon: "⚔️", label: "Compare models", hint: "Battle Mode benchmark", action: () => setIsComparisonMode(true) },
+                            { icon: "⚡", label: "Quick templates", hint: "Code review, summarize...", action: () => setShowTemplates(true) },
+                          ].map((tile, i) => (
+                            <button
+                              key={i}
+                              onClick={tile.action}
+                              style={{
+                                padding: "16px",
+                                borderRadius: 16,
+                                background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+                                border: `1px solid ${ui.panelBorder}`,
+                                cursor: "pointer",
+                                textAlign: "left",
+                                transition: "all 0.2s",
+                                color: ui.text,
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = ui.accent; e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = ui.panelBorder; e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)"; }}
+                            >
+                              <div style={{ fontSize: 24, marginBottom: 8 }}>{tile.icon}</div>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{tile.label}</div>
+                              <div style={{ fontSize: 11, color: ui.subtle, marginTop: 4 }}>{tile.hint}</div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Example Prompts */}
+                        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", marginBottom: 10, letterSpacing: "0.05em" }}>Try an example</div>
+                          <div style={{ display: "grid", gap: 8 }}>
+                            {[
+                              "Explain the difference between REST and GraphQL with pros and cons",
+                              "Write a TypeScript function that validates email addresses",
+                              "What are the OWASP Top 10 security vulnerabilities?"
+                            ].map((prompt, i) => (
+                              <button
+                                key={i}
+                                onClick={() => { setInput(prompt); textareaRef.current?.focus(); }}
+                                style={{
+                                  padding: "12px 16px",
+                                  borderRadius: 12,
+                                  background: "transparent",
+                                  border: `1px solid ${ui.panelBorder}`,
+                                  color: ui.muted,
+                                  fontSize: 13,
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                  transition: "all 0.2s",
+                                  lineHeight: 1.4,
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.color = ui.text; e.currentTarget.style.borderColor = ui.accent; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = ui.muted; e.currentTarget.style.borderColor = ui.panelBorder; }}
+                              >
+                                → {prompt}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       <AnimatePresence initial={false}>
@@ -1684,15 +1786,18 @@ export default function ChatClient() {
               <div style={{ padding: "10px 20px 20px 20px", borderTop: `1px solid ${ui.panelBorder}`, background: ui.panelBg }}>
                  <div style={{ maxWidth: 900, margin: "0 auto" }}>
                     
-                    {/* Persona Selector (Day 10) */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", paddingBottom: 4 }}>
-                      {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
-                        const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
-                        const isOptimized = activeSession?.model === bestModelMatch;
-                        
-                        return (
-                          <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                    {/* Persona Selector (Day 10 + Day 12 Clarity) */}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 4 }}>
+                        {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => {
+                          const bestModelMatch = getOptimalModelForPersona(key as PersonaKey);
+                          const isOptimized = activeSession?.model === bestModelMatch;
+                          const description = p.prompt.length > 80 ? p.prompt.substring(0, 77) + "..." : p.prompt;
+                          
+                          return (
                             <button
+                              key={key}
+                              title={p.prompt}
                               onClick={() => handlePersonaChange(key as PersonaKey)}
                               style={{
                                 display: "flex",
@@ -1712,14 +1817,16 @@ export default function ChatClient() {
                             >
                               <span style={{ fontSize: 14 }}>{p.icon}</span>
                               {p.name}
-                              {isOptimized && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} title="Optimization Active" />}
+                              {isOptimized && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px #22c55e" }} title="Optimized model matched" />}
                             </button>
-                            <span style={{ fontSize: 9, opacity: 0.5, fontWeight: 700, color: activePersonaId === key ? ui.accent : ui.subtle }}>
-                               {isOptimized ? `(Optimized: ${activeSession.model})` : `(${activeSession?.model || "llama3"})`}
-                            </span>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                      {/* Active Persona Description */}
+                      <div style={{ fontSize: 11, color: ui.subtle, opacity: 0.7, marginTop: 6, fontStyle: "italic", display: "flex", gap: 6, alignItems: "center" }}>
+                        <span>{PERSONAS[activePersonaId].icon}</span>
+                        <span>{PERSONAS[activePersonaId].name} — {PERSONAS[activePersonaId].prompt.length > 90 ? PERSONAS[activePersonaId].prompt.substring(0, 87) + "..." : PERSONAS[activePersonaId].prompt}</span>
+                      </div>
                     </div>
 
                     {/* Attachment Chips */}
@@ -1803,7 +1910,7 @@ export default function ChatClient() {
                                }}
                                title="Quick Prompts"
                              >
-                               <span style={{ fontSize: 14 }}>?</span>
+                               <span style={{ fontSize: 14 }}>⚡</span>
                              </button>
                              <AnimatePresence>
                                {showTemplates && (
@@ -1929,7 +2036,7 @@ export default function ChatClient() {
       <AnimatePresence>
         {previewDocId && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
-             <div style={{ width: "90%", maxWidth: 1000, maxH: "90%", background: ui.panelBg, borderRadius: 20, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+             <div style={{ width: "90%", maxWidth: 1000, maxHeight: "90%", background: ui.panelBg, borderRadius: 20, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <div style={{ padding: 16, borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", justifyContent: "space-between" }}>
                    <div style={{ fontWeight: 700 }}>{previewDocData?.name || "Document Preview"}</div>
                    <button onClick={() => setPreviewDocId(null)} style={{ background: "none", border: "none", color: ui.text, cursor: "pointer", fontWeight: 700 }}>Close</button>

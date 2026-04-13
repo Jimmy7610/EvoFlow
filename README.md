@@ -1,99 +1,83 @@
 # EvoFlow AI Ops 🚀
 
-**Managed Operations Dashboard for Local LLM Workflows and Advanced Chat.**
+**Premium Managed Operations Dashboard for Local LLM Workflows.**
 
-EvoFlow is a powerful, monorepo-based "AI Ops" command center designed for users who want 100% private, high-performance local AI. It transforms local models (via Ollama) into a professional-grade workspace with advanced reasoning and a premium design.
+EvoFlow is a powerful, monorepo-based "AI Ops" command center designed for professionals who want 100% privacy, high-performance local AI, and uncompromised UX. It transforms local models (via Ollama) into a premium workspace with advanced multi-agent reasoning, RAG analysis, web search, and model benchmarking.
 
 > **"Din helt privata, lokala kommandocentral för AI."**  
 > EvoFlow är din personliga AI-hubb – 100% kontroll, inga molnavgifter.
 
 ---
 
-## ✨ 30-Day Transformation Features
+## ✨ Features
 
-EvoFlow has recently undergone a major structural and visual transformation to become a "Premium Local AI Product".
+EvoFlow has evolved into a "Premium Local AI Product" through a rigorous 30-day roadmap, prioritizing both raw intelligence and user experience.
 
-### 💬 Advanced Chat Experience
-- **Premium Rendering (Day 4)**: Full Markdown support via `react-markdown` and `remark-gfm`. 
-  - **Syntax Highlighting**: Beautiful code blocks with one-click **"COPY"** functionality.
-  - **GFM Tables**: Full support for complex data and alignment.
-  - **Contextual Math & Logic**: Elegant rendering for blockquotes and lists.
-- **Composer Perfection (Day 5)**: 
-  - **Auto-resizing Input**: The textarea grows with your prompts perfectly.
-  - **Stop Generation**: Interrupt AI responses instantly with a dedicated Stop button (`AbortController`).
-  - **Power User Shortcuts**: `Cmd/Ctrl + Enter` to send, `Shift + Enter` for new lines, `Esc` to blur.
-- **Advanced Rendering (Day 4)**: Full GFM support, syntax highlighting, and contextual message actions.
-- **System Reliability (Day 8)**: Real-time Ollama status monitoring and robust error handling for local API disconnections.
-- **Battle Mode (Day 3)**: Compare two different local models side-by-side in real-time.
-- **Persona & Prompt Library (Day 9)**: 
-  - **Dynamic AI Personas**: Switch between specialized roles like **Code Expert**, **Security Lead**, and **Product Architect** instantly.
-  - **Quick Prompt ⚡ Menu**: Access a library of pre-defined templates for common tasks like code reviews, bug fixes, and architecture planning.
-  - **Personalized System Prompts**: Every session can have its own custom instruction set for ultra-tailored AI behavior.
-  - **Ollama Visibility**: Direct feedback on backend connection and processing states.
-  - **Quad-Indication Dashboard**: Unified health monitoring for API, Web, Executor, and Ollama in the sidebar.
-- **Battle Mode 2.0 (Day 10)**: 
-  - **Multi-Persona Comparison**: Compare different AI roles (e.g., Code Expert vs Product Architect) side-by-side on the same model or across different models.
-  - **Independent Persona Selection**: Full control over system prompts for both primary and secondary chat panes.
-  - **Intelligent Model Matching**: Automated detection of "best match" models for each persona. If you select **Code Expert**, EvoFlow automatically activates high-performance coding models like `qwen3-coder:30b` if they are installed locally.
-- **Advanced Intelligence (Day 11)**:
-  - **Reasoning Flow Visualizer**: High-fidelity, animated transparency into multi-agent workflows (Memory, Planning, Execution).
-  - **System Health Monitor**: Real-time observability of backend services and model status.
-- **Web Capability Layer (Phase 5)**:
-  - **Zero-Config Search**: Seamlessly retrieve real-time news, weather, and current events without needing API keys using the built-in DuckDuckGo scraper.
-  - **Live Web Research Integration**: Visualized seamlessly in the Reasoning Flow complete with a dynamic Globe icon.
+### 🏠 Premium Interface & UX Clarity
+- **Stunning Dashboards**: A premium, dark-first product homepage with Framer Motion micro-animations.
+- **Fixed-Viewport Layout**: A zero-scroll global layout (100vh) pushing all scrolling into dedicated chat and context panels.
+- **Cognitive Polish**: Contextual tooltips, intelligent empty states with actionable prompt defaults, and collapsible dev controls to eliminate decision fatigue.
+- **Theme Ecosystem**: Persistent UI themes including *Midnight*, *Emerald*, *Cyberpunk*, *Obsidian*, and clean *Light* setups. Dynamic font scaling ensures perfect readability.
 
+### 🧠 Advanced Intelligence
+- **Multi-Agent Reasoning Visualizer**: See the AI "think" in real-time. A beautifully animated stepper tracks the Planner, Executor, and Reviewer as they work through complex prompts.
+- **Live Web Research**: The agentic workflow can autonomously fetch live news and search the web (via an integrated zero-config DuckDuckGo scraper) for grounded answers.
+- **Intelligent RAG (Document Analysis)**: Upload `.txt`, `.md`, or `.pdf` files. EvoFlow maintains a contextual memory of uploaded documents per session.
+- **Intelligent Persona Routing**: Switch between roles like *Code Expert*, *Security Lead*, or *Product Architect*. EvoFlow will automatically activate the local highest-performance model for that specific job (e.g., `qwen2.5-coder` for coding).
 
-### 📁 Session & Export Power (Day 7)
-Professional-grade tools for high-volume data handling:
-- **Multi-Selection Mode**: Enter "Manage" mode to select multiple sessions for bulk operations.
-- **Markdown Export**: Transform your chats into high-fidelity, readable `.md` documents with full metadata preserved.
-- **Premium Bulk Cleanup**: Permanently delete multiple sessions at once with a safe, theme-consistent "Click to Confirm" button state (replacing native popups).
-- **Selective JSON Export**: Export only curated sessions to share or back up specific workflows.
+### 💬 The Chat Experience
+- **Battle Mode 2.0**: The ultimate benchmarking tool. Compare two different local models or two different system personas side-by-side on the exact same prompt to evaluate generation quality.
+- **Streaming & Control**: Real-time response streaming with instant interruption (Stop Generation) via AbortControllers.
+- **High-Fidelity Rendering**: Full Markdown, GitHub Flavored Markdown (GFM) tables, and gorgeous syntax highlighting for code blocks with one-click copy.
+- **Quick Prompts ⚡**: A built-in library of rapid-fire templates for code review, summarizing, and fixing bugs.
 
-### 🎨 Theme Ecosystem (Day 6)
-Experience EvoFlow in your favorite environment. All themes are persistent via `localStorage`.
-- **Midnight**: Our signature deep blue/black oculart-safe dark mode.
-- **Emerald**: A refreshing forest-inspired palette with vibrant green accents.
-- **Cyberpunk**: A high-energy neon world of pink and purple.
-- **Obsidian**: A ultra-minimalist slate and monochrome aesthetic.
-- **Light**: A clean, high-contrast professional white mode.
-- **Font Scaling**: Dynamically adjust the text size of the chat history for perfect readability.
-
-### 🧠 Smart Logic & Memory
-- **Multi-step Reasoning**: Transparent agent flow where you see the **Planner**, **Executor**, and **Reviewer** at work.
-- **Attachment Awareness**: Upload `.txt`, `.md`, or `.pdf` files to provide context. Active documents appear as interactive chips in the composer.
-- **Managed Lifecycle**: Control your local background workers (API/Executor) directly from the Dashboard.
+### 📁 Session & Export Power
+- **Persistent Memory**: A robust SQLite + Prisma backend means sessions survive browser reboots.
+- **Bulk Management**: Multi-selection mode for cleaning up the sidebar.
+- **Unified Exports**: One-click export to high-fidelity `.md` or raw `.json` payloads for archiving flows.
 
 ---
 
-## 🏗 Monorepo Structure
+## 🏗 Monorepo Architecture
 
-- **`apps/web`**: Next.js 14 frontend using `framer-motion` for world-class animations.
-- **`apps/api`**: Express.js backbone with Prisma/SQLite for persistent session management.
-- **`workers/executor`**: The "Brain" – handles model orchestration and multi-agent loops.
+EvoFlow enforces a clean separation of concerns using a Next.js frontend, an Express API, and a background Node worker.
+
+- **`apps/web`**: Next.js 14 App Router, React 18, and `framer-motion` for world-class animations.
+- **`apps/api`**: Express.js backbone serving as the unified integration layer for Ollama and Prisma interactions.
+- **`workers/executor`**: The "Brain" — handles long-running multi-agent loops and web capabilities asynchronously.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (LTS)
-- [Ollama](https://ollama.com/) (running with `llama3` or `mistral` pulled)
+- [Node.js](https://nodejs.org/) (LTS, v18+ recommended)
+- [Ollama](https://ollama.com/) (running natively with models like `llama3` or `qwen2.5-coder` installed)
+- `pnpm` or `npm`
 
 ### Quick Start
+
+EvoFlow uses a custom `evoflow-root-runner` to orchestrate all services simultaneously.
+
 ```bash
-# Install dependencies
-pnpm install
+# Install all dependencies across the monorepo
+npm run install:all
 
-# Initialize Database
-cd apps/api && npx prisma db push
+# Initialize the Database
+cd apps/api && npx prisma db push && cd ../..
 
-# Launch the whole system
-pnpm dev
+# Launch the whole system (Web, API, and Executor)
+npm run dev
 ```
 
+The system will start and be accessible at `http://localhost:3000`.
+
+---
+
 ## 🛠 Tech Stack
-- **Languages**: TypeScript (Full Stack)
-- **UI Architecture**: Next.js, Framer Motion, Lucide React
-- **Logic**: Ollama (Local AI), React Markdown
-- **Data**: SQLite + Prisma ORM
+- **Core**: TypeScript (Full Stack)
+- **UI Framework**: Next.js 14, React 18
+- **Styling & Animation**: Vanilla CSS, Framer Motion, Lucide React
+- **Local AI Logic**: Ollama, LangChain (Concepts)
+- **Persistence**: SQLite + Prisma ORM
+- **Web Capabilities**: Axios + Cheerio

@@ -96,7 +96,8 @@ class SystemMonitor {
     this.options.onStatusChange({
       api: { status: 'offline', message: msg, lastUpdate: now },
       web: { status: 'loading', message: 'Unknown', lastUpdate: now },
-      executor: { status: 'loading', message: 'Unknown', lastUpdate: now }
+      executor: { status: 'loading', message: 'Unknown', lastUpdate: now },
+      ollama: { status: 'loading', message: 'Unknown', lastUpdate: now }
     });
   }
 

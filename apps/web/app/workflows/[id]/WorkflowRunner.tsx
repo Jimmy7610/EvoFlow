@@ -236,7 +236,7 @@ export default function WorkflowRunner({
           throw new Error(`Run request failed (${response.status})`);
         }
 
-        let data: RunResult | unknown = text;
+        let data: RunResult | string = text;
         try {
           data = JSON.parse(text) as RunResult;
         } catch {
@@ -263,7 +263,7 @@ export default function WorkflowRunner({
               model: selectedModel,
               modelSelection,
               transport: "normal",
-            },
+            } as HistoryItem,
             ...prev,
           ].slice(0, 8));
         } else {
@@ -288,7 +288,7 @@ export default function WorkflowRunner({
               model,
               modelSelection: selectedMode,
               transport: "normal",
-            },
+            } as HistoryItem,
             ...prev,
           ].slice(0, 8));
         }
@@ -352,7 +352,7 @@ export default function WorkflowRunner({
             model: modelFromHeader,
             modelSelection: selectionFromHeader,
             transport: "stream",
-          },
+          } as HistoryItem,
           ...prev,
         ].slice(0, 8));
       }
