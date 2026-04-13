@@ -1,8 +1,20 @@
-import { webSearch } from '../src/tools/search';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 async function run() {
-  const results = await webSearch('skriv dom 5 senaste nyheterna från Aftonbladet');
-  console.log(JSON.stringify(results, null, 2));
+  try {
+    const response = await axios.get('https://rss.aftonbladet.se/rss2/small/pages/sections/senastenytt/', {
+      timeout: 5000
+    });
+    const $ = cheerio.load(response.data, { xmlMode: true });
+    $(`item`).each((i, el) => {
+      if (i < 5) {
+        console.log($(el).find('title').text());
+        console.log($(el).find('link').text());
+      }
+    });
+  } catch(e) {
+    console.log(e.message);
+  }
 }
-
 run();

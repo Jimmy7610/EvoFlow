@@ -9,10 +9,24 @@ export interface SearchResult {
 }
 
 /**
- * A zero-config web search tool using DuckDuckGo Lite.
- * Privacy-respecting and works without API keys.
+ * A built-in web search and news aggregator.
+ * Smart-routes specific news requests directly to official RSS feeds for 100% accuracy,
+ * and falls back to DuckDuckGo Lite for general web queries.
  */
 export async function webSearch(query: string): Promise<SearchResult[]> {
+  const lowerQuery = query.toLowerCase();
+  
+  // Smart Routing: Direct RSS Feeds for major Swedish news outlets
+  if (lowerQuery.includes('aftonbladet')) {
+     return fetchRss('https://rss.aftonbladet.se/rss2/small/pages/sections/senastenytt/', 'Aftonbladet');
+  }
+  if (lowerQuery.includes('expressen')) {
+     return fetchRss('https://feeds.expressen.se/nyheter/', 'Expressen');
+  }
+  if (lowerQuery.includes('svt')) {
+     return fetchRss('https://www.svt.se/nyheter/rss.xml', 'SVT Nyheter');
+  }
+
   const url = `https://lite.duckduckgo.com/lite/`;
   const results: SearchResult[] = [];
 
@@ -77,6 +91,37 @@ export async function webSearch(query: string): Promise<SearchResult[]> {
     return results.slice(0, 5); // Return top 5 results
   } catch (error) {
     console.error('[WebSearch] Failed to fetch results:', error);
+    return [];
+  }
+}
+
+// --- Helper for Direct News Feeds ---
+async function fetchRss(url: string, sourceName: string): Promise<SearchResult[]> {
+  try {
+    const response = await axios.get(url, { timeout: 10000 });
+    const $ = cheerio.load(response.data, { xmlMode: true });
+    const results: SearchResult[] = [];
+    
+    $('item').slice(0, 5).each((i, el) => {
+      const title = $(el).find('title').text().trim();
+      const link = $(el).find('link').text().trim();
+      let description = $(el).find('description').text().trim();
+      // Remove basic HTML from description if present
+      description = description.replace(/<[^>]*>?/gm, '').substring(0, 200);
+
+      if (title && link) {
+        results.push({
+          title: `[${sourceName}] ${title}`,
+          url: link,
+          snippet: description || 'Ingen sammanfattning tillgänglig.'
+        });
+      }
+    });
+    
+    console.log(`[WebSearch] Successfully fetched ${results.length} articles from ${sourceName} RSS.`);
+    return results;
+  } catch (error) {
+    console.error(`[WebSearch] Failed to fetch RSS from ${sourceName}:`, error);
     return [];
   }
 }
