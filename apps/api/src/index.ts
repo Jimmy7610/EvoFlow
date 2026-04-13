@@ -413,10 +413,11 @@ async function makeDirectOutput(message: string, model: string, images?: string[
       `Instruction: ${source}`,
     ].join("\n");
 
+    const sysTime = `[SYSTEM CURRENT TIME: ${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}]\n`;
     const aiResult = await callOllama(
       prompt,
       model,
-      systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      sysTime + (systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       images
     );
 
@@ -457,10 +458,11 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
       searchContext ? `${searchContext}Instruction: ${source}` : `Instruction: ${source}`,
     ].join("\n");
 
+    const sysTime = `[SYSTEM CURRENT TIME: ${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}]\n`;
     const streamed = await streamOllama(
       prompt,
       model,
-      systemPrompt || `You are a precise assistant for direct-mode tasks. Use any provided [Real-Time Data] to answer accurately. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      sysTime + (systemPrompt || `You are a precise assistant for direct-mode tasks. Use any provided [Real-Time Data] to answer accurately. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       onChunk,
       images
     );
@@ -512,10 +514,11 @@ async function makeAgentOutput(message: string, topic: string, model: string, sy
   }
 
   try {
+    const sysTime = `[SYSTEM CURRENT TIME: ${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}]\n`;
     const aiResult = await callOllama(
       message,
       model,
-      systemPrompt || `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       images
     );
 
@@ -558,10 +561,11 @@ async function streamAgentOutput(
   await new Promise(r => setTimeout(r, 400)); 
   emitStep("planner", "completed", "Defining strategy...", `Strategy: Address user query about ${topic} using ${model}.`);
 
-  // Research Detection (Simplified for MVP)
+  // Research Detection (Expanded)
   const needsWeb = lower.includes("nyheter") || lower.includes("väder") || lower.includes("news") || 
                   lower.includes("nätet") || lower.includes("internet") || lower.includes("aftonbladet") ||
-                  lower.includes("latest") || lower.includes("recent") || lower.includes("today");
+                  lower.includes("latest") || lower.includes("recent") || lower.includes("today") ||
+                  lower.includes("idag") || lower.includes("datum") || lower.includes("tid");
 
   let searchContext = "";
   if (needsWeb) {
@@ -580,10 +584,11 @@ async function streamAgentOutput(
   const finalPromptWithSearch = searchContext ? `${searchContext}\n${message}` : message;
 
   try {
+    const sysTime = `[SYSTEM CURRENT TIME: ${new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}]\n`;
     const streamed = await streamOllama(
       finalPromptWithSearch,
       model,
-      systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`,
+      sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       onChunk,
       images
     );
