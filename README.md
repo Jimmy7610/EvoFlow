@@ -29,15 +29,18 @@ EvoFlow has recently undergone a major structural and visual transformation to b
   - **Dynamic AI Personas**: Switch between specialized roles like **Code Expert**, **Security Lead**, and **Product Architect** instantly.
   - **Quick Prompt ⚡ Menu**: Access a library of pre-defined templates for common tasks like code reviews, bug fixes, and architecture planning.
   - **Personalized System Prompts**: Every session can have its own custom instruction set for ultra-tailored AI behavior.
-- **System Engine Status (Day 9)**: 
-  - **Real-time Monitoring**: Integrated dashboard in the sidebar showing the live status of the API, Web, and Executor services.
   - **Ollama Visibility**: Direct feedback on backend connection and processing states.
+  - **Quad-Indication Dashboard**: Unified health monitoring for API, Web, Executor, and Ollama in the sidebar.
+- **Battle Mode 2.0 (Day 10)**: 
+  - **Multi-Persona Comparison**: Compare different AI roles (e.g., Code Expert vs Product Architect) side-by-side on the same model or across different models.
+  - **Independent Persona Selection**: Full control over system prompts for both primary and secondary chat panes.
+
 
 ### 📁 Session & Export Power (Day 7)
 Professional-grade tools for high-volume data handling:
 - **Multi-Selection Mode**: Enter "Manage" mode to select multiple sessions for bulk operations.
 - **Markdown Export**: Transform your chats into high-fidelity, readable `.md` documents with full metadata preserved.
-- **Bulk Cleanup**: Permanently delete multiple sessions at once with a single, safe confirmation flow.
+- **Premium Bulk Cleanup**: Permanently delete multiple sessions at once with a safe, theme-consistent "Click to Confirm" button state (replacing native popups).
 - **Selective JSON Export**: Export only curated sessions to share or back up specific workflows.
 
 ### 🎨 Theme Ecosystem (Day 6)

@@ -75,6 +75,12 @@ type DevStatusPayload = {
       port: number;
     };
     executor: DevServiceSnapshot;
+    ollama: {
+      label: string;
+      running: boolean;
+      managed: boolean;
+      baseUrl: string;
+    };
   };
 };
 
@@ -648,6 +654,14 @@ async function getDevControlsStatus(): Promise<DevStatusPayload> {
   const webRunning = await isHttpServiceRunning(`http://localhost:${EVOFLOW_WEB_PORT}`);
   const executorCwd = getExecutorCwd();
 
+  let ollamaRunning = false;
+  try {
+    const ollamaResp = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { method: "GET" });
+    ollamaRunning = ollamaResp.ok;
+  } catch {
+    ollamaRunning = false;
+  }
+
   return {
     success: true,
     controls: {
@@ -672,6 +686,12 @@ async function getDevControlsStatus(): Promise<DevStatusPayload> {
         cwd: executorCwd,
         command: EVOFLOW_EXECUTOR_COMMAND,
         lastError: managedServiceErrors.get("executor") ?? "",
+      },
+      ollama: {
+        label: "Ollama",
+        running: ollamaRunning,
+        managed: false,
+        baseUrl: OLLAMA_BASE_URL,
       },
     },
   };

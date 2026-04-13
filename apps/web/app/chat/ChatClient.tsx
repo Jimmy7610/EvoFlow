@@ -176,7 +176,7 @@ type ThemeName = keyof typeof THEMES;
 // --- UTILS ---
 async function fetchModels(baseUrl: string, demoToken: string): Promise<{ models: string[]; defaultModel: string }> {
   try {
-    const response = await fetch(`${baseUrl}/models`, {
+    const response = await fetch(`${baseUrl}/api/ollama/models`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
@@ -488,7 +488,7 @@ export default function ChatClient() {
   const [isAborted, setIsAborted] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
-  const [isOllamaOnline, setIsOllamaOnline] = useState(true);
+  const [isBulkDeleteConfirming, setIsBulkDeleteConfirming] = useState(false);
   const [activePersonaId, setActivePersonaId] = useState<PersonaKey>("general");
   const [showTemplates, setShowTemplates] = useState(false);
 
@@ -932,17 +932,7 @@ export default function ChatClient() {
     localStorage.setItem("evoflow_font_size", fontSize.toString());
   }, [fontSize]);
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const r = await fetch(`${apiBaseUrl}/models`);
-        setIsOllamaOnline(r.ok);
-      } catch { setIsOllamaOnline(false); }
-    };
-    checkStatus();
-    const t = setInterval(checkStatus, 15000);
-    return () => clearInterval(t);
-  }, [apiBaseUrl]);
+
 
   useEffect(() => {
     refreshDevStatus();
@@ -998,17 +988,23 @@ export default function ChatClient() {
 
   async function handleBulkDelete() {
     if (selectedSessionIds.size === 0) return;
-    if (!window.confirm(`Permanently delete ${selectedSessionIds.size} sessions?`)) return;
+    
+    if (!isBulkDeleteConfirming) {
+      setIsBulkDeleteConfirming(true);
+      setTimeout(() => setIsBulkDeleteConfirming(false), 5000); // Reset after 5s
+      return;
+    }
+
+    setIsBulkDeleteConfirming(false);
 
     const idsToDelete = Array.from(selectedSessionIds);
-    setSessions(prev => prev.filter(s => !selectedSessionIds.has(s.id)));
     
-    // Fallback active session
     setSessions(prev => {
-       if (prev.length > 0 && selectedSessionIds.has(activeSessionId)) {
-         setActiveSessionId(prev[0].id);
-       }
-       return prev;
+      const remaining = prev.filter(s => !selectedSessionIds.has(s.id));
+      if (selectedSessionIds.has(activeSessionId)) {
+        setActiveSessionId(remaining.length > 0 ? remaining[0].id : "");
+      }
+      return remaining;
     });
 
     setIsSelectionMode(false);
@@ -1016,9 +1012,10 @@ export default function ChatClient() {
 
     try {
       await Promise.all(idsToDelete.map(id => fetch(`${apiBaseUrl}/api/sessions/${id}`, { method: "DELETE" })));
-      addNotification("Bulk delete complete", "success");
+      addNotification(`Deleted ${idsToDelete.length} sessions`, "success");
     } catch (e) {
-      addNotification("Some deletions failed", "error");
+      console.error("Bulk delete API failed", e);
+      addNotification("Some deletions failed on server", "error");
     }
   }
 
@@ -1100,10 +1097,6 @@ export default function ChatClient() {
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <h1 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>EvoFlow Chat</h1>
-                <div 
-                  title={isOllamaOnline ? "System Online" : "System Offline"} 
-                  style={{ width: 8, height: 8, borderRadius: "50%", background: isOllamaOnline ? "#22c55e" : "#ef4444", boxShadow: isOllamaOnline ? "0 0 8px #22c55e" : "0 0 8px #ef4444", transition: "background 0.3s" }} 
-                />
               </div>
               <nav style={{ display: "flex", gap: 12, fontSize: 13, fontWeight: 600 }}>
                 <Link href="/" style={{ color: ui.accent, textDecoration: "none", opacity: 0.65 }}>Dashboard</Link>
@@ -1238,12 +1231,25 @@ export default function ChatClient() {
                   >
                     Export as JSON
                   </button>
-                  <button 
+                   <button 
                     onClick={handleBulkDelete}
                     disabled={selectedSessionIds.size === 0}
-                    style={{ width: "100%", padding: "6px", borderRadius: 8, background: "#ef4444", color: "#fff", border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: selectedSessionIds.size === 0 ? 0.4 : 1 }}
+                    style={{ 
+                      width: "100%", 
+                      padding: "6px", 
+                      borderRadius: 8, 
+                      background: isBulkDeleteConfirming ? "#b91c1c" : "#ef4444", 
+                      color: "#fff", 
+                      border: "none", 
+                      fontSize: 11, 
+                      fontWeight: 800, 
+                      cursor: "pointer", 
+                      opacity: selectedSessionIds.size === 0 ? 0.4 : 1,
+                      transition: "all 0.2s",
+                      boxShadow: isBulkDeleteConfirming ? "0 0 12px rgba(239, 68, 68, 0.4)" : "none"
+                    }}
                   >
-                    Delete Selected
+                    {isBulkDeleteConfirming ? `CONFIRM DELETE ${selectedSessionIds.size}?` : `Delete Selected (${selectedSessionIds.size})`}
                   </button>
                 </div>
               </motion.div>
@@ -1266,7 +1272,15 @@ export default function ChatClient() {
                   <option value="multi-step">MULTI-STEP MODE</option>
                 </select>
                 <div style={{ width: 1, height: 12, background: ui.panelBorder, alignSelf: "center" }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: ui.subtle }}>{activeSession.model}</span>
+                <select 
+                  value={activeSession.model} 
+                  onChange={e => updateActiveSessionField("model", e.target.value)} 
+                  style={{ background: "none", border: "none", color: ui.accent, fontSize: 11, fontWeight: 800, outline: "none", cursor: "pointer", textTransform: "uppercase" }}
+                >
+                  {models.map(m => (
+                    <option key={m} value={m} style={{ background: ui.panelBg, color: ui.text }}>{m.toUpperCase()}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Messages Container */}
@@ -1329,8 +1343,14 @@ export default function ChatClient() {
                   <div style={{ width: 400, borderLeft: `1px solid ${ui.panelBorder}`, background: isDark ? "rgba(0,0,0,0.1)" : "#f8fafc", display: "flex", flexDirection: "column" }}>
                     <div style={{ padding: "12px", borderBottom: `1px solid ${ui.panelBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontSize: 10, fontWeight: 900, color: ui.accent }}>VS: {comparisonModel}</span>
-                      <select value={comparisonModel} onChange={e => setComparisonModel(e.target.value)} style={{ fontSize: 10, background: "none", border: `1px solid ${ui.panelBorder}`, color: ui.text, borderRadius: 4 }}>
-                        {models.map(m => <option key={m} value={m}>{m}</option>)}
+                       <select 
+                        value={comparisonModel} 
+                        onChange={e => setComparisonModel(e.target.value)} 
+                        style={{ background: "none", border: `1px solid ${ui.accent}`, color: ui.accent, fontSize: 10, fontWeight: 800, outline: "none", cursor: "pointer", borderRadius: 4, padding: "2px 4px" }}
+                      >
+                        {models.map(m => (
+                          <option key={m} value={m} style={{ background: ui.panelBg, color: ui.text }}>{m.toUpperCase()}</option>
+                        ))}
                       </select>
                     </div>
                     <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "grid", gap: 12 }}>
@@ -1351,28 +1371,32 @@ export default function ChatClient() {
                     {/* Persona Selector (Day 9) */}
                     <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
                       {(Object.entries(PERSONAS) as [PersonaKey, typeof PERSONAS.general][]).map(([key, p]) => (
-                        <button
-                          key={key}
-                          onClick={() => setActivePersonaId(key)}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "6px 12px",
-                            borderRadius: 100,
-                            background: activePersonaId === key ? ui.accent : "transparent",
-                            color: activePersonaId === key ? "#fff" : ui.subtle,
-                            border: `1px solid ${activePersonaId === key ? ui.accent : ui.panelBorder}`,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                            transition: "all 0.2s"
-                          }}
-                        >
-                          <span>{p.icon}</span>
-                          {p.name}
-                        </button>
+                        <div key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                          <button
+                            onClick={() => setActivePersonaId(key)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "6px 14px",
+                              borderRadius: 100,
+                              background: activePersonaId === key ? ui.accent : "transparent",
+                              color: activePersonaId === key ? "#fff" : ui.subtle,
+                              border: `1px solid ${activePersonaId === key ? ui.accent : ui.panelBorder}`,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                              transition: "all 0.2s"
+                            }}
+                          >
+                            <span style={{ fontSize: 14 }}>{p.icon}</span>
+                            {p.name}
+                          </button>
+                          <span style={{ fontSize: 9, opacity: 0.5, fontWeight: 700, color: activePersonaId === key ? ui.accent : ui.subtle }}>
+                             ({activeSession.model || "llama3"})
+                          </span>
+                        </div>
                       ))}
                     </div>
 

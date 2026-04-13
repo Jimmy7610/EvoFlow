@@ -11,6 +11,7 @@ type StatusState = {
   api: { status: 'online' | 'offline' | 'loading', message: string, lastUpdate: string };
   web: { status: 'online' | 'offline' | 'loading', message: string, lastUpdate: string };
   executor: { status: 'online' | 'offline' | 'loading', message: string, lastUpdate: string };
+  ollama: { status: 'online' | 'offline' | 'loading', message: string, lastUpdate: string };
 };
 
 class SystemMonitor {
@@ -80,6 +81,11 @@ class SystemMonitor {
         status: controls.executor.running ? 'online' : 'offline', 
         message: controls.executor.lastError || (controls.executor.running ? 'Operational' : 'Stopped'),
         lastUpdate: now 
+      },
+      ollama: {
+        status: controls.ollama?.running ? 'online' : 'offline',
+        message: controls.ollama?.running ? 'Ready' : 'Not Reachable',
+        lastUpdate: now
       }
     };
     this.options.onStatusChange(newStatus);
@@ -104,7 +110,8 @@ export default function SystemStatus({ apiBaseUrl, demoToken }: SystemStatusProp
   const [status, setStatus] = useState<StatusState>({
     api: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
     web: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
-    executor: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() }
+    executor: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
+    ollama: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() }
   });
 
   useEffect(() => {
