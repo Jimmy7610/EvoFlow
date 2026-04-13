@@ -606,16 +606,30 @@ export default function ChatClient() {
     accent: activeTheme.accent,
   };
 
-  // Day 11: Persistence Sync & Load
+  // Day 11: Persistence Sync & Load (Hydrating directly from backend API)
   useEffect(() => {
     async function init() {
       const { models: m, defaultModel: dm } = await fetchModels(apiBaseUrl, demoToken);
       setModels(m);
       if (dm) setDefaultModel(dm);
       
-      const saved = loadSessions(dm || "llama3");
+      let saved: Session[] = [];
+      try {
+        console.log("[Day 11] Fetching secure sessions from backend API...");
+        const response = await fetch(`${apiBaseUrl}/api/sessions`, {
+           headers: demoToken ? { Authorization: `Bearer ${demoToken}` } : {}
+        });
+        const data = await response.json();
+        if (data.success && data.items && data.items.length > 0) {
+           saved = data.items;
+        }
+      } catch(e) {
+        console.error("Failed to fetch sessions from backend:", e);
+        saved = loadSessions(dm || "llama3"); // Fallback
+      }
+
       if (saved.length > 0) {
-        console.log("[Day 11] Hydrating sessions from storage:", saved.length);
+        console.log("[Day 11] Hydrating sessions from Database:", saved.length);
         setSessions(saved);
         setActiveSessionId(saved[0].id);
       } else {
@@ -628,13 +642,6 @@ export default function ChatClient() {
     }
     init();
   }, [apiBaseUrl]); // Added apiBaseUrl to deps
-
-  // Save changes to localStorage, but ONLY if we have sessions loaded
-  useEffect(() => {
-    if (sessions.length > 0 && !isLoadingModels) {
-      localStorage.setItem("evoflow_sessions", JSON.stringify(sessions));
-    }
-  }, [sessions, isLoadingModels]);
 
   // Auto-resize logic
   useEffect(() => {

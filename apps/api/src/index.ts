@@ -809,7 +809,7 @@ app.get(["/sessions", "/api/sessions"], requireAuth, async (_req, res) => {
     const items = await prisma.chatSession.findMany({
       orderBy: { updatedAt: "desc" },
       include: { 
-        _count: { select: { messages: true } },
+        messages: { orderBy: { createdAt: "asc" } },
         documents: { select: { id: true, name: true, type: true, createdAt: true } } 
       },
     });
