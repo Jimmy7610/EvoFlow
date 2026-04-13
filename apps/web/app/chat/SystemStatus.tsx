@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 interface SystemStatusProps {
   apiBaseUrl: string;
   demoToken?: string;
+  onEvent?: (message: string, type: 'info' | 'success' | 'error') => void;
 }
 
 type StatusState = {
@@ -107,13 +108,38 @@ class SystemMonitor {
   }
 }
 
-export default function SystemStatus({ apiBaseUrl, demoToken }: SystemStatusProps) {
+export default function SystemStatus({ apiBaseUrl, demoToken, onEvent }: SystemStatusProps) {
   const [status, setStatus] = useState<StatusState>({
     api: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
     web: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
     executor: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() },
     ollama: { status: 'loading', message: 'Checking...', lastUpdate: new Date().toISOString() }
   });
+  
+  const [prevStatus, setPrevStatus] = useState<StatusState | null>(null);
+
+  useEffect(() => {
+    if (!onEvent || !prevStatus) {
+       setPrevStatus(status);
+       return;
+    }
+    
+    // Check API transitions
+    if (prevStatus.api.status !== 'online' && status.api.status === 'online') {
+      onEvent('Server Connected', 'success');
+    } else if (prevStatus.api.status === 'online' && status.api.status === 'offline') {
+      onEvent('Server Disconnected', 'error');
+    }
+
+    // Check Ollama transitions
+    if (prevStatus.ollama.status !== 'online' && status.ollama.status === 'online') {
+      onEvent('Ollama Online', 'success');
+    } else if (prevStatus.ollama.status === 'online' && status.ollama.status === 'offline') {
+      onEvent('Ollama Offline', 'error');
+    }
+
+    setPrevStatus(status);
+  }, [status, prevStatus, onEvent]);
 
   useEffect(() => {
     const monitor = new SystemMonitor({

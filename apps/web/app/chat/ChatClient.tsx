@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip, Globe } from "lucide-react";
+import { Copy, Trash2, Check, ExternalLink, Code, Terminal, Layers, Square, X, Paperclip, Globe, Palette } from "lucide-react";
 import SystemStatus from "./SystemStatus";
 
 type Message = {
@@ -584,6 +584,24 @@ export default function ChatClient() {
   const [activePersonaId, setActivePersonaId] = useState<PersonaKey>("general");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showDevControls, setShowDevControls] = useState(false);
+  const [customAccentColor, setCustomAccentColor] = useState<string>("");
+  const [isGlassmorphic, setIsGlassmorphic] = useState<boolean>(false);
+  const [showThemeSettings, setShowThemeSettings] = useState(false);
+
+  // Load custom theme settings
+  useEffect(() => {
+    const savedAccent = localStorage.getItem("evoflow_custom_accent");
+    const savedGlass = localStorage.getItem("evoflow_is_glass");
+    if (savedAccent) setCustomAccentColor(savedAccent);
+    if (savedGlass === "true") setIsGlassmorphic(true);
+  }, []);
+
+  // Save custom theme settings
+  useEffect(() => {
+    if (customAccentColor) localStorage.setItem("evoflow_custom_accent", customAccentColor);
+    else localStorage.removeItem("evoflow_custom_accent");
+    localStorage.setItem("evoflow_is_glass", String(isGlassmorphic));
+  }, [customAccentColor, isGlassmorphic]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const docInputRef = useRef<HTMLInputElement | null>(null);
@@ -594,23 +612,28 @@ export default function ChatClient() {
   const activeTheme = THEMES[activeThemeName];
   const isDark = activeTheme.isDark;
 
+  const resolvedAccent = customAccentColor || activeTheme.accent;
+  const rawPanelBg = activeTheme.panelBg;
+  const glassPanelBg = isGlassmorphic ? rawPanelBg.replace(/[\d.]+\)$/g, '0.4)') : rawPanelBg;
+
   const ui = {
     pageBg: activeTheme.pageBg,
     pageBorder: activeTheme.panelBorder,
-    panelBg: activeTheme.panelBg,
+    panelBg: glassPanelBg,
     panelBorder: activeTheme.panelBorder,
     text: activeTheme.text,
     muted: activeTheme.muted,
     subtle: activeTheme.subtle,
     controlBg: isDark ? "rgba(15,23,42,0.6)" : "#ffffff",
     controlBorder: activeTheme.panelBorder,
-    chatCanvas: activeTheme.chatCanvas,
+    chatCanvas: isGlassmorphic ? "transparent" : activeTheme.chatCanvas,
     userBubble: activeTheme.bubbleUser,
     assistantBubble: activeTheme.bubbleAssistant,
     assistantBorder: activeTheme.assistantBorder,
     actionBg: isDark ? "rgba(9,16,30,0.92)" : "#ffffff",
     actionText: activeTheme.text,
-    accent: activeTheme.accent,
+    accent: resolvedAccent,
+    glassBlur: isGlassmorphic ? "blur(24px)" : "none",
   };
 
   // Day 11: Persistence Sync & Load (Hydrating directly from backend API)
@@ -1368,28 +1391,95 @@ export default function ChatClient() {
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Theme Switcher */}
-            <div style={{ display: "flex", background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: 4, borderRadius: 12, border: `1px solid ${ui.panelBorder}`, marginRight: 6 }}>
-              {(Object.keys(THEMES) as ThemeName[]).map(tName => (
-                <button
-                  key={tName}
-                  onClick={() => setActiveThemeName(tName)}
-                  title={THEMES[tName].name}
+            {/* Theme Switcher & Editor Popover */}
+            <div style={{ position: "relative", display: "flex", alignItems: "center", marginRight: 6 }}>
+              <div style={{ display: "flex", background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", padding: 4, borderRadius: 12, border: `1px solid ${ui.panelBorder}` }}>
+                {(Object.keys(THEMES) as ThemeName[]).map(tName => (
+                  <button
+                    key={tName}
+                    onClick={() => setActiveThemeName(tName)}
+                    title={THEMES[tName].name}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 8,
+                      border: activeThemeName === tName ? `2px solid ${ui.accent}` : "none",
+                      background: THEMES[tName].accent,
+                      cursor: "pointer",
+                      margin: "0 2px",
+                      transition: "transform 0.2s",
+                      boxShadow: activeThemeName === tName ? `0 0 8px ${ui.accent}` : "none",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.transform = "scale(1.15)"}
+                    onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                  />
+                ))}
+                <div style={{ width: 1, backgroundColor: ui.panelBorder, margin: "0 4px" }} />
+                <button 
+                  title="Customize Theme & Aesthetics"
+                  onClick={() => setShowThemeSettings(!showThemeSettings)}
                   style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 8,
-                    border: activeThemeName === tName ? `2px solid ${ui.accent}` : "none",
-                    background: THEMES[tName].accent,
-                    cursor: "pointer",
-                    margin: "0 2px",
-                    transition: "transform 0.2s",
-                    boxShadow: activeThemeName === tName ? `0 0 8px ${ui.accent}` : "none",
+                    width: 24, height: 24, borderRadius: 8, background: showThemeSettings ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)") : "transparent", border: "none", color: ui.text, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
                   }}
-                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.15)"}
-                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
-                />
-              ))}
+                  onMouseEnter={e => e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)"}
+                  onMouseLeave={e => e.currentTarget.style.background = showThemeSettings ? (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)") : "transparent"}
+                >
+                  <Palette size={14} />
+                </button>
+              </div>
+
+              {/* Theme Settings Popover */}
+              <AnimatePresence>
+                {showThemeSettings && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    style={{ position: "absolute", top: "100%", right: 0, marginTop: 10, width: 220, background: ui.panelBg, backdropFilter: "blur(24px)", border: `1px solid ${ui.panelBorder}`, borderRadius: 16, padding: 16, boxShadow: "0 10px 40px rgba(0,0,0,0.4)", zIndex: 200, WebkitBackdropFilter: "blur(24px)" }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, color: ui.subtle, textTransform: "uppercase", marginBottom: 12, letterSpacing: "0.05em" }}>Custom Accent</div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                      {[THEMES[activeThemeName].accent, "#f43f5e", "#f59e0b", "#10b981", "#8b5cf6"].map(hex => (
+                        <button
+                          key={hex}
+                          onClick={() => setCustomAccentColor(hex === THEMES[activeThemeName].accent ? "" : hex)}
+                          style={{
+                            width: 24, height: 24, borderRadius: "50%", background: hex, border: "none", cursor: "pointer",
+                            outline: (customAccentColor || THEMES[activeThemeName].accent) === hex ? `2px solid ${hex}` : "none", outlineOffset: 2
+                          }}
+                        />
+                      ))}
+                      <label style={{ width: 24, height: 24, borderRadius: "50%", background: "transparent", border: `1px dashed ${ui.subtle}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", position: "relative", overflow: "hidden" }}>
+                        <span style={{ fontSize: 13, color: ui.subtle }}>+</span>
+                        <input 
+                          type="color" 
+                          value={resolvedAccent} 
+                          onChange={(e) => setCustomAccentColor(e.target.value)}
+                          style={{ position: "absolute", opacity: 0, width: "200%", height: "200%", top: "-50%", left: "-50%", cursor: "pointer" }} 
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ width: "100%", height: 1, background: ui.panelBorder, margin: "14px 0" }} />
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: ui.text }}>Glass Mode</div>
+                        <div style={{ fontSize: 11, color: ui.subtle, marginTop: 2 }}>Translucent panels</div>
+                      </div>
+                      <button 
+                        onClick={() => setIsGlassmorphic(!isGlassmorphic)}
+                        style={{
+                          width: 36, height: 20, borderRadius: 10, background: isGlassmorphic ? ui.accent : ui.controlBg, border: `1px solid ${isGlassmorphic ? ui.accent : ui.panelBorder}`, cursor: "pointer", position: "relative", transition: "all 0.2s"
+                        }}
+                      >
+                        <div style={{ position: "absolute", top: 1, left: isGlassmorphic ? 17 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 2px 4px rgba(0,0,0,0.2)" }} />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Font Control */}
@@ -1444,7 +1534,7 @@ export default function ChatClient() {
       {/* --- CONTENT AREA --- */}
       <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 12, flex: 1, overflow: "hidden", paddingBottom: 10 }}>
         {/* Sidebar */}
-        <aside style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <aside style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, backdropFilter: ui.glassBlur, outline: isGlassmorphic ? `1px solid rgba(255,255,255,0.05)` : "none", transition: "all 0.3s", padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Sessions</span>
             <div style={{ display: "flex", gap: 6 }}>
@@ -1551,12 +1641,12 @@ export default function ChatClient() {
           </AnimatePresence>
            {/* System Engine Status (Day 9) */}
            <div style={{ padding: "0 16px 16px 16px" }}>
-             <SystemStatus apiBaseUrl={apiBaseUrl} />
+             <SystemStatus apiBaseUrl={apiBaseUrl} onEvent={(msg, type) => addNotification(msg, type)} />
            </div>
          </aside>
 
         {/* Main Chat Area */}
-        <section style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+        <section style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, backdropFilter: ui.glassBlur, outline: isGlassmorphic ? `1px solid rgba(255,255,255,0.05)` : "none", transition: "all 0.3s", display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
           {activeSession && (
             <>
               {/* Toolbar */}
@@ -1580,7 +1670,7 @@ export default function ChatClient() {
 
               {/* Messages Container */}
               <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                <div ref={scrollContainerRef} onScroll={handleScroll} className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas }}>
+                <div ref={scrollContainerRef} onScroll={handleScroll} className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px 20px", background: ui.chatCanvas, transition: "background 0.3s" }}>
                   <div style={{ maxWidth: 900, margin: "0 auto", display: "grid", gap: 16 }}>
                     {activeSession.messages.length === 0 ? (
                       <div style={{ textAlign: "center", marginTop: 60 }}>
@@ -2023,11 +2113,20 @@ export default function ChatClient() {
       <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
       <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleDocumentUpload(f); }} />
 
-      {/* Notifications */}
-      <div style={{ position: "fixed", bottom: 20, right: 20, display: "grid", gap: 8 }}>
+      {/* Modern Toast Notifications */}
+      <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", flexDirection: "column-reverse", gap: 8, zIndex: 9999 }}>
         <AnimatePresence>
           {notifications.map(n => (
-            <motion.div key={n.id} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} style={{ padding: "10px 16px", borderRadius: 12, background: n.type === "error" ? "#ef4444" : "#22c55e", color: "#fff", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>{n.message}</motion.div>
+            <motion.div 
+              key={n.id} 
+              initial={{ opacity: 0, y: 20, scale: 0.95 }} 
+              animate={{ opacity: 1, y: 0, scale: 1 }} 
+              exit={{ opacity: 0, y: 10, scale: 0.95 }} 
+              style={{ padding: "10px 18px", borderRadius: 20, background: ui.panelBg, backdropFilter: ui.glassBlur || "blur(12px)", border: `1px solid ${n.type === "error" ? "#ef4444" : (n.type === "success" ? "#10b981" : ui.panelBorder)}`, color: ui.text, fontSize: 13, fontWeight: 600, boxShadow: "0 10px 30px rgba(0,0,0,0.2)", display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: n.type === "error" ? "#ef4444" : (n.type === "success" ? "#10b981" : ui.accent) }} />
+              {n.message}
+            </motion.div>
           ))}
         </AnimatePresence>
       </div>
