@@ -93,7 +93,13 @@ type PersonaKey = keyof typeof PERSONAS;
 
 // --- COMPONENTS (Day 11) ---
 
-const ReasoningStepper = ({ steps, isDark, activePersonaId, ui }: { steps: any[], isDark: boolean, activePersonaId: PersonaKey, ui: any }) => {
+const ReasoningStepper = ({ steps: rawSteps, isDark, activePersonaId, ui }: { steps: any, isDark: boolean, activePersonaId: PersonaKey, ui: any }) => {
+  let steps: any[] = [];
+  if (Array.isArray(rawSteps)) {
+    steps = rawSteps;
+  } else if (typeof rawSteps === "string") {
+    try { steps = JSON.parse(rawSteps); } catch { steps = []; }
+  }
   if (!steps || steps.length === 0) return null;
 
   const nodeIcons: Record<string, any> = {
