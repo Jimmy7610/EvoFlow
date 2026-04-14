@@ -1,6 +1,12 @@
-# 🚀 EvoFlow - Intelligence Augmented Workspace (v6.0)
+# 🚀 EvoFlow - Jimmy's Intelligence Workspace (v6.0)
 
-EvoFlow is a state-of-the-art, hybrid local-cloud intelligence platform designed for high-depth analysis, secure multimodal interactions, and advanced reasoning workflows. Built for developers, architects, and researchers who demand more than a simple chat interface.
+EvoFlow is a powerful, personal AI platform designed for advanced reasoning, deep analysis, and secure local-first interactions. Built entirely from scratch by **Jimmy**, this workspace is intended for users who need more than just a chat interface — it provides a high-depth environment for research, code architecture, and complex decision-making.
+
+## 💎 The Vision
+The purpose of EvoFlow is to bridge the gap between simple LLM chats and professional-grade intelligence environments. It focuses on:
+- **Absolute Privacy**: Running local models (Ollama) ensures your data never leaves your system.
+- **Deep Reasoning**: Tools specifically designed to break the "brevity wall" and provide exhaustive, high-quality analysis.
+- **Workflow Orchestration**: Managing multi-step tasks that require planning, research, and synthesis.
 
 ![EvoFlow V6 Banner](https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=1200)
 
@@ -75,4 +81,4 @@ EvoFlow uses a three-tier architecture to ensure maximum performance and securit
 
 ---
 
-*Made with ❤️ by the Google Deepmind Coding Team.*
+*Made with ❤️ by **Jimmy** - Sole Developer and Visionary.*
