@@ -5,7 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { User, Bot, Trash2, Copy, Send, Plus, Search, Paperclip, ChevronRight, Check, Code, X, Settings, Palette, Target, Download, ExternalLink, Terminal, Layers, Square, Globe } from 'lucide-react';
+import { User, Bot, Trash2, Copy, Send, Plus, Search, Paperclip, ChevronRight, Check, Code, X, Settings, Palette, Target, Download, ExternalLink, Terminal, Layers, Square, Globe, Power, Play } from 'lucide-react';
 import { THEMES, ThemeName } from '../../lib/themes';
 import { PremiumHeader } from '../../components/PremiumHeader';
 import { usePathname } from 'next/navigation';
@@ -603,6 +603,26 @@ export default function ChatClient() {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("");
+  const [isSystemActive, setIsSystemActive] = useState(true);
+
+  // System Activation Logic (v21.12)
+  useEffect(() => {
+    const saved = localStorage.getItem("evoflow_system_active");
+    if (saved === "false") setIsSystemActive(false);
+
+    const handleStorage = () => {
+      const current = localStorage.getItem("evoflow_system_active");
+      setIsSystemActive(current !== "false");
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  const handleLaunchSystem = () => {
+    localStorage.setItem("evoflow_system_active", "true");
+    setIsSystemActive(true);
+    window.dispatchEvent(new Event("storage"));
+  };
   const [input, setInput] = useState("");
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -1706,7 +1726,84 @@ export default function ChatClient() {
       {devErrorText && <div style={{ marginBottom: 10, padding: 10, borderRadius: 12, background: isDark ? "rgba(127,29,29,0.2)" : "#fff1f2", color: "#ef4444", fontSize: 13 }}>{devErrorText}</div>}
 
       {/* --- CONTENT AREA (Responsive Grid) --- */}
-      <div className="chat-layout-grid">
+      <div className="chat-layout-grid" style={{ position: "relative" }}>
+        {/* System Dormant Overlay (New v21.12) */}
+        <AnimatePresence>
+          {!isSystemActive && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1000,
+                background: isDark ? "rgba(2, 6, 23, 0.6)" : "rgba(255, 255, 255, 0.4)",
+                backdropFilter: "blur(20px)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 16,
+                padding: 40,
+                textAlign: "center"
+              }}
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.05, 1],
+                  opacity: [0.7, 1, 0.7],
+                }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                style={{
+                  width: 100,
+                  height: 100,
+                  borderRadius: 35,
+                  background: isDark ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.05)",
+                  border: "2px solid rgba(239, 68, 68, 0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ef4444",
+                  marginBottom: 24,
+                  boxShadow: "0 10px 40px rgba(239, 68, 68, 0.15)"
+                }}
+              >
+                <Power size={48} />
+              </motion.div>
+              
+              <h2 style={{ fontSize: 32, fontWeight: 900, marginBottom: 12, letterSpacing: "-0.03em" }}>System Dormant</h2>
+              <p style={{ fontSize: 16, color: ui.subtle, maxWidth: 400, margin: "0 auto 32px", lineHeight: 1.6 }}>
+                The intelligent reasoning engines are currently powered down. Launch the workspace to resume operations.
+              </p>
+              
+              <button
+                onClick={handleLaunchSystem}
+                style={{
+                  padding: "16px 36px",
+                  borderRadius: 16,
+                  background: ui.accent,
+                  color: "#fff",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  boxShadow: `0 10px 30px ${ui.accent}55`,
+                  transition: "all 0.3s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05) translateY(-2px)"}
+                onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+              >
+                <Play size={20} fill="currentColor" />
+                Launch Intelligent Services
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Sidebar */}
         <aside className="chat-sidebar hide-scrollbar" style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, backdropFilter: ui.glassBlur, outline: isGlassmorphic ? `1px solid rgba(255,255,255,0.05)` : "none", transition: "all 0.3s", padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

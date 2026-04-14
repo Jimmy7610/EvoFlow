@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Palette, Settings, Target } from 'lucide-react';
+import { Palette, Settings, Target, Power, Zap, Play } from 'lucide-react';
 import { ThemeName, THEMES, UIColors } from '../lib/themes';
 
 interface PremiumHeaderProps {
@@ -15,6 +15,26 @@ interface PremiumHeaderProps {
 }
 
 export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, activePath }: PremiumHeaderProps) {
+  const [isSystemActive, setIsSystemActive] = React.useState(true);
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem("evoflow_system_active");
+    if (saved === "false") setIsSystemActive(false);
+    
+    const handleStorage = () => {
+      const current = localStorage.getItem("evoflow_system_active");
+      setIsSystemActive(current !== "false");
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  const toggleSystem = (val: boolean) => {
+    localStorage.setItem("evoflow_system_active", val ? "true" : "false");
+    setIsSystemActive(val);
+    window.dispatchEvent(new Event("storage"));
+  };
+
   return (
     <div
       style={{
@@ -99,22 +119,72 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
             ))}
           </div>
           
-          <Link
-            href="/chat"
-            className="theme-transition"
-            style={{
-              fontSize: 11,
-              fontWeight: 800,
-              padding: "6px 14px",
-              borderRadius: 10,
-              background: ui.accent,
-              color: "#fff",
-              textDecoration: "none",
-              boxShadow: `0 4px 12px ${ui.accent}33`,
-            }}
-          >
-            <span className="hide-mobile">Launch </span>Chat →
-          </Link>
+          {/* System Control & Launch */}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {isSystemActive ? (
+              <button
+                onClick={() => toggleSystem(false)}
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 10,
+                  background: isDark ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.05)",
+                  border: `1px solid ${isDark ? "rgba(239, 68, 68, 0.3)" : "rgba(239, 68, 68, 0.2)"}`,
+                  color: "#ef4444",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s",
+                }}
+                title="Stop System Engine"
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)"}
+                onMouseLeave={e => e.currentTarget.style.background = isDark ? "rgba(239, 68, 68, 0.1)" : "rgba(239, 68, 68, 0.05)"}
+              >
+                <Power size={16} />
+              </button>
+            ) : (
+              <div 
+                style={{ 
+                  width: 10, height: 10, borderRadius: "50%", background: "#ef4444", 
+                  boxShadow: "0 0 8px #ef4444", marginRight: 4 
+                }} 
+                title="System Dormant" 
+              />
+            )}
+
+            <Link
+              href="/chat"
+              onClick={() => toggleSystem(true)}
+              className="theme-transition"
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                padding: "6px 14px",
+                borderRadius: 10,
+                background: isSystemActive ? ui.accent : ui.controlBg,
+                color: isSystemActive ? "#fff" : ui.text,
+                textDecoration: "none",
+                boxShadow: isSystemActive ? `0 4px 12px ${ui.accent}33` : "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                border: isSystemActive ? "none" : `1px solid ${ui.panelBorder}`,
+                transition: "all 0.2s",
+              }}
+            >
+              {isSystemActive ? (
+                 <>
+                   <span className="hide-mobile">Launch </span>Chat →
+                 </>
+              ) : (
+                <>
+                  <Play size={12} fill="currentColor" />
+                  Launch Chat
+                </>
+              )}
+            </Link>
+          </div>
         </div>
       </div>
     </div>

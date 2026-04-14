@@ -188,6 +188,10 @@ export default function HomePage() {
           >
             <Link
               href="/chat"
+              onClick={() => {
+                localStorage.setItem("evoflow_system_active", "true");
+                window.dispatchEvent(new Event("storage"));
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
