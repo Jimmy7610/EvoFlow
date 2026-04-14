@@ -89,9 +89,9 @@ type DevStatusPayload = {
 const app = express();
 const PORT = 4000;
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const LANGUAGE_CONSISTENCY_INSTRUCTION = "IMPORTANT: Always respond in the same language as the user's latest prompt.";
 
-const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3";
+const DEFAULT_OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b";
+const LANGUAGE_CONSISTENCY_INSTRUCTION = "IMPORTANT: You MUST always respond in the SAME LANGUAGE as the user's prompt (e.g., if asked in Swedish, answer in Swedish).";
 const EVOFLOW_REPO_ROOT = process.env.EVOFLOW_REPO_ROOT || path.resolve(process.cwd(), "../..");
 const EVOFLOW_WEB_PORT = Number(process.env.EVOFLOW_WEB_PORT || 3000);
 const EVOFLOW_EXECUTOR_COMMAND = process.env.EVOFLOW_EXECUTOR_COMMAND || "npm run dev";
@@ -282,14 +282,38 @@ async function resolveRequestedModel(
   let images: string[] = [];
 
   if (sessionId) {
-     const docs = await prisma.chatDocument.findMany({ where: { sessionId } });
+     // Fetch context documents
+     const docs = await prisma.chatDocument.findMany({ 
+       where: { 
+         sessionId,
+         OR: [
+           { type: { contains: "pdf" } },
+           { type: "txt" },
+           { type: "ts" },
+           { type: { contains: "text" } }
+         ]
+       } 
+     });
      for (const doc of docs) {
-       const type = (doc.type || "").toLowerCase();
-       if (type.includes("pdf") || type === "txt" || type === "ts" || type.includes("text")) {
-         context += `\n[Context from ${doc.name}]:\n${doc.content}\n`;
-       } else if (type.includes("png") || type.includes("jpg") || type.includes("jpeg") || type.includes("webp") || type.includes("image")) {
-         images.push(doc.content);
-       }
+       context += `\n[Context from ${doc.name}]:\n${doc.content}\n`;
+     }
+
+     // Fetch the LATEST image ONLY (Day 16 Fix for Hallucinations)
+     const imgDocs = await prisma.chatDocument.findMany({
+       where: {
+         sessionId,
+         type: { in: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'image'] }
+       },
+       orderBy: { createdAt: 'desc' },
+       take: 1
+     });
+
+     if (imgDocs.length > 0) {
+       const lastImg = imgDocs[0];
+       const rawBase64 = lastImg.content && lastImg.content.includes(";base64,") 
+         ? lastImg.content.split(";base64,")[1] 
+         : (lastImg.content || "");
+       if (rawBase64) images = [rawBase64];
      }
   }
 
@@ -309,22 +333,34 @@ async function resolveRequestedModel(
   };
 }
 
-async function callOllama(prompt: string, model: string, system?: string, images?: string[]): Promise<string> {
+async function callOllama(prompt: string, model: string, system?: string, images?: string[], overrides?: any): Promise<string> {
+  // Day 14/16: Vision-Aware Switching
+  const isVision = images && images.length > 0;
+  const targetModel = isVision ? "llava" : model;
+  
   const payload: any = {
-    model,
+    model: targetModel,
     prompt,
     system,
     stream: false,
+    options: {
+      temperature: 0.7,
+      num_predict: 8192,
+      num_ctx: 16384,
+      ...(overrides || {})
+    }
   };
-  if (images && images.length > 0) {
-    payload.images = images;
+  
+  if (isVision) {
+    // Ensure raw base64 without Data URI prefix
+    payload.images = images.map(img => img.includes(";base64,") ? img.split(";base64,")[1] : img);
   }
   const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, system: (payload.system || "") + "\n" + LANGUAGE_CONSISTENCY_INSTRUCTION }),
   });
 
   if (!response.ok) {
@@ -341,23 +377,36 @@ async function streamOllama(
   model: string,
   system: string | undefined,
   onChunk: (chunk: string) => void,
-  images?: string[]
+  images?: string[],
+  overrides?: any
 ): Promise<string> {
+  // Day 14/16: Vision-Aware Switching
+  const isVision = images && images.length > 0;
+  const targetModel = isVision ? "llava" : model;
+
   const payload: any = {
-    model,
+    model: targetModel,
     prompt,
     system,
     stream: true,
+    options: {
+      temperature: 0.7,
+      num_predict: 8192,
+      num_ctx: 16384,
+      ...(overrides || {})
+    }
   };
-  if (images && images.length > 0) {
-    payload.images = images;
+
+  if (isVision) {
+    // Ensure raw base64 without Data URI prefix
+    payload.images = images.map(img => img.includes(";base64,") ? img.split(";base64,")[1] : img);
   }
   const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, system: (payload.system || "") + "\n" + LANGUAGE_CONSISTENCY_INSTRUCTION }),
   });
 
   if (!response.ok) {
@@ -418,7 +467,7 @@ async function streamOllama(
   return full.trim();
 }
 
-async function makeDirectOutput(message: string, model: string, images?: string[], systemPrompt?: string): Promise<string> {
+async function makeDirectOutput(message: string, model: string, images?: string[], systemPrompt?: string, options?: any): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -437,7 +486,8 @@ async function makeDirectOutput(message: string, model: string, images?: string[
       prompt,
       model,
       sysTime + (systemPrompt || `You are a precise assistant for direct-mode tasks. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
-      images
+      images,
+      options
     );
 
     if (aiResult) {
@@ -450,7 +500,7 @@ async function makeDirectOutput(message: string, model: string, images?: string[
   return extractDirectOutput(source);
 }
 
-async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void, images?: string[], systemPrompt?: string): Promise<string> {
+async function streamDirectOutput(message: string, model: string, onChunk: (chunk: string) => void, images?: string[], systemPrompt?: string, options?: any): Promise<string> {
   const source = String(message ?? "").trim();
   if (!source) return "";
 
@@ -483,7 +533,8 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
       model,
       sysTime + (systemPrompt || `You are a precise assistant for direct-mode tasks. Use any provided [Real-Time Data] to answer accurately. Return only the exact final answer with no explanation. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       onChunk,
-      images
+      images,
+      options
     );
 
     if (streamed) {
@@ -498,7 +549,7 @@ async function streamDirectOutput(message: string, model: string, onChunk: (chun
   return fallback;
 }
 
-async function makeAgentOutput(message: string, topic: string, model: string, systemPrompt?: string, images?: string[]): Promise<string> {
+async function makeAgentOutput(message: string, topic: string, model: string, systemPrompt?: string, images?: string[], options?: any): Promise<string> {
   const lower = message.toLowerCase();
 
   if (topic === "email-validator") {
@@ -538,7 +589,8 @@ async function makeAgentOutput(message: string, topic: string, model: string, sy
       message,
       model,
       sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Answer clearly and stay on topic. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
-      images
+      images,
+      options
     );
 
     if (aiResult) {
@@ -557,7 +609,8 @@ async function streamAgentOutput(
   model: string,
   onChunk: (chunk: string) => void,
   systemPrompt?: string,
-  images?: string[]
+  images?: string[],
+  options?: any
 ): Promise<{ content: string; steps: any[] }> {
   const steps: any[] = [];
   const emitStep = (node: string, status: "active" | "completed", input?: string, output?: string) => {
@@ -609,7 +662,8 @@ async function streamAgentOutput(
       model,
       sysTime + (systemPrompt || `You are an assistant inside a local workflow engine. Use the [Web Search Results] if provided to answer accurately. If the user asks for a specific number of items (like 5 news articles), you MUST extract and summarize exactly that number from the context. Do not truncate the response. ${LANGUAGE_CONSISTENCY_INSTRUCTION}`),
       onChunk,
-      images
+      images,
+      options
     );
 
     if (streamed) {
@@ -1038,7 +1092,9 @@ app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth
     console.log(`[apps/api] Processing document upload: ${originalname} (${mimetype}) for session ${sessionId}`);
 
     let content = "";
+    let docType = "txt";
     if (mimetype === "application/pdf") {
+      docType = "pdf";
       try {
         console.log("[apps/api] Starting PDF extraction...");
         const dataBuffer = fs.readFileSync(filePath);
@@ -1057,9 +1113,19 @@ app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth
       console.log(`[apps/api] Image detected (${mimetype}). Converting to base64...`);
       const dataBuffer = fs.readFileSync(filePath);
       content = dataBuffer.toString("base64");
-      console.log(`[apps/api] Image converted. Length: ${content.length}`);
+      
+      // Map common image mimetypes to simple types
+      if (mimetype.includes("png")) docType = "png";
+      else if (mimetype.includes("jpeg") || mimetype.includes("jpg")) docType = "jpg";
+      else if (mimetype.includes("bmp")) docType = "bmp";
+      else if (mimetype.includes("gif")) docType = "gif";
+      else if (mimetype.includes("webp")) docType = "webp";
+      else docType = "image";
+      
+      console.log(`[apps/api] Image converted (${docType}). Length: ${content.length}`);
     } else {
       content = fs.readFileSync(filePath, "utf-8");
+      docType = mimetype.split("/")[1] || "txt";
       console.log(`[apps/api] Text/TS extraction successful. Read ${content.length} characters.`);
     }
 
@@ -1072,15 +1138,21 @@ app.post(["/sessions/:id/documents", "/api/sessions/:id/documents"], requireAuth
       data: {
         sessionId,
         name: originalname,
-        type: mimetype.split("/")[1] || "txt",
+        type: docType,
         content: content || "",
       },
     });
 
     console.log(`[apps/api] Document ${doc.id} saved to database.`);
     res.json({ success: true, document: doc });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[apps/api] Document upload handler crashed:", error);
+    
+    // Day 14: Handle Foreign Key Constraint (Session doesn't exist)
+    if (error.code === 'P2003') {
+      return res.status(404).json({ success: false, error: "Session not found or not yet synced. Please ensure the session exists before uploading documents." });
+    }
+
     res.status(500).json({ success: false, error: String(error) });
   }
 });
@@ -1137,6 +1209,28 @@ app.get(["/runs", "/api/runs"], requireAuth, (_req, res) => {
     items: runs.slice().reverse(),
     total: runs.length,
   });
+});
+
+app.post(["/generate/image", "/api/generate/image"], requireAuth, async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt) return res.status(400).json({ success: false, error: "Prompt is required" });
+
+    const settings = await prisma.globalSettings.findUnique({ where: { id: "global" } });
+    const apiKeys = settings?.apiKeys ? JSON.parse(settings.apiKeys) : {};
+    
+    if (!apiKeys.openai) {
+      return res.status(400).json({ success: false, error: "OpenAI API key not configured for image generation." });
+    }
+
+    console.log(`[apps/api] Requesting image generation: ${prompt.slice(0, 50)}...`);
+    const imageUrl = await generateImage(prompt, apiKeys.openai);
+    
+    res.json({ success: true, imageUrl });
+  } catch (error) {
+    console.error("[apps/api] Image generation failed:", error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
 });
 
 // --- INFRASTRUCTURE & SETTINGS ---
@@ -1271,6 +1365,7 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
     const sessionId = payload.sessionId;
     const systemPrompt = payload.systemPrompt;
+    const options = payload.options;
     const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
       useAutoModel,
@@ -1295,8 +1390,8 @@ app.post(["/runs", "/api/runs"], requireAuth, async (req, res) => {
 
     const finalOutput =
       mode === "direct"
-        ? await makeDirectOutput(finalPrompt, selectedModel, images, systemPrompt)
-        : await makeAgentOutput(finalPrompt, topic, selectedModel, systemPrompt, images);
+        ? await makeDirectOutput(finalPrompt, selectedModel, images, systemPrompt, options)
+        : await makeAgentOutput(finalPrompt, topic, selectedModel, systemPrompt, images, options);
 
     const now = new Date().toISOString();
     const run: RunRecord = {
@@ -1354,6 +1449,7 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
     const useAutoModel = payload.modelSelection === "auto" || payload.useAutoModel === true;
     const sessionId = payload.sessionId;
     const systemPrompt = payload.systemPrompt;
+    const options = payload.options;
     const { selectedModel, selectionMode, context: docContext, images } = await resolveRequestedModel(
       requestedModel,
       useAutoModel,
@@ -1401,11 +1497,11 @@ app.post(["/runs/stream", "/api/runs/stream"], requireAuth, async (req, res) => 
     let steps: any[] = [];
     
     if (mode === "direct") {
-       const directOutput = await streamDirectOutput(finalPrompt, selectedModel, onChunk, images, systemPrompt);
+       const directOutput = await streamDirectOutput(finalPrompt, selectedModel, onChunk, images, systemPrompt, options);
        fullOutput = directOutput;
        steps = [{ node: "direct", status: "completed", output: "Direct generation complete" }];
     } else {
-       const agentResult = await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, systemPrompt, images);
+       const agentResult = await streamAgentOutput(finalPrompt, topic, selectedModel, onChunk, systemPrompt, images, options);
        fullOutput = agentResult.content;
        steps = agentResult.steps;
     }

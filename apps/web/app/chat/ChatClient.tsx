@@ -60,13 +60,18 @@ type DevStatusResponse = {
   error?: string;
 };
 
+type LightBoxState = {
+  url: string;
+  name: string;
+} | null;
+
 const EXPORT_FILE_PREFIX = "evoflow-chats";
 
 const PERSONAS = {
   general: {
     name: "General",
     icon: "🏠",
-    prompt: "You are a helpful and concise AI assistant. Provide clear and accurate answers.",
+    prompt: "You are a helpful assistant. Provide clear and accurate answers (be concise for simple direct questions, but be exhaustive and detailed if images, 1000-word requests, or complex analysis are mentioned).",
     keywords: ["llama3", "mistral", "gemma"]
   },
   coder: {
@@ -86,6 +91,12 @@ const PERSONAS = {
     icon: "🏛️",
     prompt: "You are a creative systems architect. Think big picture, focus on scalability, modularity, and innovative problem solving.",
     keywords: ["30b", "70b", "architect", "llama3.1"]
+  },
+  vision: {
+    name: "Visual Analyst",
+    icon: "👁️",
+    prompt: "DU ÄR EN SPECIALISERAD VISUELL INTELLIGENS-AGENT. Ditt mål är att leverera en EXTREMT INGÅENDE och UTÖKAD analys. OM ANVÄNDAREN BER OM '1000 ORD' ELLER 'DJUP ANALYS', MÅSTE DU FÖLJA 'NARRATIVE FORCE PROTOCOL': 1. Miljö & Bakgrund (Beskriv i min 200 ord). 2. Centrala figurer & föremål (min 200 ord). 3. Texturer, färger & belysning (min 200 ord). 4. Teknisk analys (OCR, koder, UI/UX-mönster) (min 200 ord). 5. Stilistisk audit & Sammanfattning. DU FÅR INTE SAMMANFATTA. Du måste vara ordrik och beskriva varje pixel. SVARA ALLTID PÅ SAMMA SPRÅK SOM ANVÄNDAREN FRÅGAR PÅ (t.ex. SVENSKA). Om ingen bild finns, svara 'NO IMAGE DETECTED'.",
+    keywords: ["llava", "vision", "gpt-4o"]
   }
 };
 
@@ -112,6 +123,17 @@ const ReasoningStepper = ({ steps, isDark, ui, activePersonaId }: { steps: any[]
     direct: "Direct Mode",
   };
 
+  // Defensive check: if steps is a string (JSON from Prisma), parse it. 
+  // If it's still not an array, default to empty.
+  const normalizedSteps = useMemo(() => {
+    if (typeof steps === 'string') {
+      try { return JSON.parse(steps); } catch { return []; }
+    }
+    return Array.isArray(steps) ? steps : [];
+  }, [steps]);
+
+  if (normalizedSteps.length === 0) return null;
+
   return (
     <div style={{ margin: "12px 0", padding: "12px", borderRadius: 16, background: isDark ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)", border: `1px solid ${ui.panelBorder}` }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, opacity: 0.8 }}>
@@ -125,7 +147,7 @@ const ReasoningStepper = ({ steps, isDark, ui, activePersonaId }: { steps: any[]
         {/* Connection Line */}
         <div style={{ position: "absolute", left: 11, top: 12, bottom: 12, width: 2, background: ui.panelBorder, opacity: 0.3 }} />
 
-        {steps.map((step, idx) => {
+        {normalizedSteps.map((step, idx) => {
           const stepId = step.id || `step_${idx}`;
           const isExpanded = expandedStepId === stepId;
           const isActive = step.status === "active";
@@ -476,6 +498,47 @@ function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { co
           ol: ({ children }) => <ol style={{ margin: "10px 0", paddingLeft: "20px", display: "grid", gap: 4 }}>{children}</ol>,
           li: ({ children }) => <li style={{ marginBottom: 4, marginLeft: 4 }}>{children}</li>,
           a: ({ href, children }) => <Link href={href || "#"} target="_blank" style={{ color: ui.accent, textDecoration: "underline", fontWeight: 600 }}>{children} <ExternalLink size={12} style={{ display: "inline", marginBottom: 2 }} /></Link>,
+          img: ({ src, alt }) => {
+            const isGenerated = src?.includes("openai.com") || src?.includes("/api/generate");
+            return (
+              <div style={{ 
+                margin: "20px 0", 
+                borderRadius: 20, 
+                overflow: "hidden", 
+                border: isGenerated ? `2px solid ${ui.accent}66` : `1px solid ${ui.panelBorder}`,
+                boxShadow: isGenerated ? `0 20px 50px ${ui.accent}33` : "0 10px 30px rgba(0,0,0,0.15)",
+                background: ui.panelBg,
+                padding: isGenerated ? "12px" : "0",
+                maxWidth: "100%",
+                position: "relative"
+              }}>
+                <img 
+                  src={src} 
+                  alt={alt} 
+                  style={{ 
+                    width: "100%", 
+                    height: "auto", 
+                    borderRadius: isGenerated ? 12 : 0, 
+                    display: "block",
+                    transition: "transform 0.3s"
+                  }} 
+                  onMouseEnter={e => e.currentTarget.style.transform = "scale(1.02)"}
+                  onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                />
+                {isGenerated && (
+                  <div style={{ padding: "12px 4px 4px 4px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: ui.accent, boxShadow: `0 0 8px ${ui.accent}` }} />
+                      <span style={{ fontSize: 11, fontWeight: 800, color: ui.text, textTransform: "uppercase", letterSpacing: 0.5 }}>Ai Generation</span>
+                    </div>
+                    <a href={src} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 800, color: ui.subtle, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                      OPEN ORIGINAL <ExternalLink size={10} />
+                    </a>
+                  </div>
+                )}
+              </div>
+            );
+          },
           p: ({ children }) => (
             <div style={{ margin: "10px 0", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {children}
@@ -604,6 +667,7 @@ export default function ChatClient() {
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [errorText, setErrorText] = useState("");
+  const [lightboxImage, setLightboxImage] = useState<LightBoxState>(null);
   const [editingSessionId, setEditingSessionId] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState("");
@@ -930,27 +994,65 @@ export default function ChatClient() {
     }
   }
 
+  // --- Persistence Strategy (Day 14) ---
+  async function ensureSessionPersisted(session: Session): Promise<string> {
+    if (!session.id.startsWith("session-")) return session.id;
+    
+    console.log("[Day 14] Initializing temporary session on server:", session.id);
+    try {
+      const resp = await fetch(`${apiBaseUrl}/api/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: session.title,
+          model: session.model,
+          transport: session.transport,
+          workflowMode: session.workflowMode,
+          contextSteering: session.contextSteering
+        }),
+      });
+      const data = await resp.json();
+      if (data.success && data.session) {
+        const realId = data.session.id;
+        // Sync local ID with DB ID immediately to prevent further race conditions
+        setSessions((prev) => prev.map(s => s.id === session.id ? { ...s, id: realId } : s));
+        setActiveSessionId(realId);
+        return realId;
+      }
+      throw new Error("Session creation failed");
+    } catch (e) {
+      console.error("Critical failure: Session sync failed", e);
+      addNotification("Sync failed - please refresh", "error");
+      throw e;
+    }
+  }
+
   // --- Document Event Handlers ---
   async function handleDocumentUpload(file: File) {
     if (!activeSession) return;
-    const formData = new FormData();
-    formData.append("file", file);
     setIsUploading(true);
     try {
-      const resp = await fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/documents`, {
+      // Step 1: Ensure session exists in DB
+      const dbSessionId = await ensureSessionPersisted(activeSession);
+      
+      // Step 2: Upload document to the guaranteed ID
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const resp = await fetch(`${apiBaseUrl}/api/sessions/${dbSessionId}/documents`, {
         method: "POST",
         body: formData,
       });
       const data = await resp.json();
       if (data.success && data.document) {
-        patchSession(activeSession.id, (s) => ({
+        patchSession(dbSessionId, (s) => ({
           ...s,
           documents: [...(s.documents || []), data.document],
         }));
         addNotification(`Uploaded ${file.name}`, "success");
       }
     } catch (e) {
-      console.error("Upload failed");
+      console.error("Upload failed", e);
     } finally {
       setIsUploading(false);
     }
@@ -973,6 +1075,45 @@ export default function ChatClient() {
     } catch (e) {
       console.error("Delete failed");
     }
+  }
+
+  async function handlePaste(e: React.ClipboardEvent) {
+    console.log("[ChatClient] Paste event detected", e.clipboardData.items.length, "items");
+    const items = e.clipboardData.items;
+    const files = e.clipboardData.files;
+    let found = false;
+
+    for (let i = 0; i < items.length; i++) {
+      console.log(`[ChatClient] Item ${i}: type=${items[i].type}, kind=${items[i].kind}`);
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          uploadBlobAsScreenshot(blob);
+          found = true;
+        }
+      }
+    }
+
+    if (!found && files && files.length > 0) {
+      console.log("[ChatClient] Checking files collection...");
+      for (let i = 0; i < files.length; i++) {
+        if (files[i].type.startsWith("image/")) {
+          uploadBlobAsScreenshot(files[i]);
+          found = true;
+        }
+      }
+    }
+
+    if (!found) {
+      console.log("[ChatClient] No image found in clipboard data.");
+    }
+  }
+
+  function uploadBlobAsScreenshot(blob: Blob | File) {
+    const fileName = `screenshot-${Date.now()}.png`;
+    const file = new File([blob], fileName, { type: "image/png" });
+    addNotification("Pasting screenshot...", "info");
+    handleDocumentUpload(file);
   }
 
   const handleDocumentPreview = async (docId: string) => {
@@ -1117,22 +1258,30 @@ export default function ChatClient() {
     setShouldAutoScroll(true);
     abortControllerRef.current = new AbortController();
 
-    // Sync User Msg
-    fetch(`${apiBaseUrl}/api/sessions/${activeSession.id}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "user", content: userText, model: userMessage.model, transport: userMessage.transport, modelSelection: userMessage.modelSelection }),
-    }).catch(e => console.error("Sync user failed"));
-
     try {
+      // Step 1: Ensure Session is in DB
+      const dbSessionId = await ensureSessionPersisted(activeSession);
+
+      // Step 2: Sync User Msg
+      fetch(`${apiBaseUrl}/api/sessions/${dbSessionId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "user", content: userText, model: userMessage.model, transport: userMessage.transport, modelSelection: userMessage.modelSelection }),
+      }).catch(e => console.error("Sync user failed"));
+
       const prompt = activeSession.messages.map(m => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n\n") + (activeSession.messages.length > 0 ? "\n\n" : "") + `User: ${userText}\n\nAssistant:`;
       const payload = { 
         message: prompt, 
         mode: activeSession.workflowMode, 
         model: activeSession.model, 
         modelSelection: activeSession.modelSelection, 
-        sessionId: activeSession.id,
-        systemPrompt: PERSONAS[activePersonaId].prompt
+        sessionId: dbSessionId,
+        systemPrompt: PERSONAS[activePersonaId].prompt,
+        options: {
+          temperature: 0.2,
+          num_predict: 8192,
+          num_ctx: 16384,
+        }
       };
 
       if (activeSession.transport === "stream") {
@@ -1609,36 +1758,68 @@ export default function ChatClient() {
                     style={{ position: "absolute", top: "100%", right: 0, marginTop: 10, width: 280, background: ui.panelBg, backdropFilter: "blur(24px)", border: `1px solid ${ui.panelBorder}`, borderRadius: 16, padding: 18, boxShadow: "0 10px 40px rgba(0,0,0,0.4)", zIndex: 200, WebkitBackdropFilter: "blur(24px)" }}
                   >
                     <div style={{ fontSize: 13, fontWeight: 900, color: ui.text, marginBottom: 4 }}>Context Steering</div>
-                    <div style={{ fontSize: 11, color: ui.subtle, marginBottom: 16 }}>Fine-tune AI memory focus</div>
+                    <div style={{ fontSize: 11, color: ui.subtle, marginBottom: 16 }}>Fine-tune AI memory & session focus</div>
 
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>Focus Keywords</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. typescript, schema, api" 
-                        value={steeringRules.focus}
-                        onChange={e => setSteeringRules(v => ({ ...v, focus: e.target.value }))}
-                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
-                      />
-                    </div>
+                    <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                           <label style={{ fontSize: 11, fontWeight: 700, color: ui.subtle }}>Focus Keywords</label>
+                           <span style={{ fontSize: 9, color: ui.accent, fontWeight: 900, textTransform: "uppercase" }}>High Priority</span>
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. typescript, schema, api" 
+                          value={steeringRules.focus}
+                          onChange={e => setSteeringRules(v => ({ ...v, focus: e.target.value }))}
+                          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none", transition: "border-color 0.2s" }}
+                          onFocus={e => e.target.style.borderColor = ui.accent}
+                          onBlur={e => e.target.style.borderColor = ui.controlBorder}
+                        />
+                      </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: ui.subtle, marginBottom: 4 }}>Excluded Topics</label>
-                      <input 
-                        type="text" 
-                        placeholder="e.g. baking, pets" 
-                        value={steeringRules.exclude}
-                        onChange={e => setSteeringRules(v => ({ ...v, exclude: e.target.value }))}
-                        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none" }}
-                      />
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                           <label style={{ fontSize: 11, fontWeight: 700, color: ui.subtle }}>Excluded Topics</label>
+                           <span style={{ fontSize: 9, color: "#ef4444", fontWeight: 900, textTransform: "uppercase" }}>Block</span>
+                        </div>
+                        <input 
+                          type="text" 
+                         placeholder="e.g. baking, pets" 
+                          value={steeringRules.exclude}
+                          onChange={e => setSteeringRules(v => ({ ...v, exclude: e.target.value }))}
+                          style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${ui.controlBorder}`, background: ui.controlBg, color: ui.text, fontSize: 12, outline: "none", transition: "border-color 0.2s" }}
+                          onFocus={e => e.target.style.borderColor = "#ef4444"}
+                          onBlur={e => e.target.style.borderColor = ui.controlBorder}
+                        />
+                      </div>
                     </div>
 
                     <button 
                       onClick={saveSteeringSettings}
                       disabled={isSteeringSaving || !activeSessionId}
-                      style={{ width: "100%", padding: "10px", borderRadius: 8, border: "none", background: ui.accent, color: "#fff", fontWeight: 700, cursor: (isSteeringSaving || !activeSessionId) ? "wait" : "pointer", opacity: (isSteeringSaving || !activeSessionId) ? 0.7 : 1 }}
+                      style={{ 
+                        width: "100%", 
+                        padding: "12px", 
+                        borderRadius: 12, 
+                        border: "none", 
+                        background: ui.accent, 
+                        color: "#fff", 
+                        fontWeight: 800, 
+                        cursor: (isSteeringSaving || !activeSessionId) ? "wait" : "pointer", 
+                        opacity: (isSteeringSaving || !activeSessionId) ? 0.7 : 1,
+                        boxShadow: `0 8px 16px ${ui.accent}33`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8
+                      }}
                     >
-                      {isSteeringSaving ? "Updating context..." : "Apply Steering"}
+                      {isSteeringSaving ? (
+                        <>
+                          <div className="spin" style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%" }} />
+                          Updating Intelligence...
+                        </>
+                      ) : "Apply Context Steering"}
                     </button>
                   </motion.div>
                 )}
@@ -2038,8 +2219,13 @@ export default function ChatClient() {
                               key={message.id}
                               onMouseEnter={() => setHoveredMessageId(message.id)}
                               onMouseLeave={() => setHoveredMessageId("")}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
+                              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              transition={{ 
+                                duration: 0.4, 
+                                ease: [0.23, 1, 0.32, 1],
+                                delay: idx === activeSession.messages.length - 1 ? 0 : idx * 0.05
+                              }}
                               style={{ display: "flex", justifyContent: message.role === "user" ? "flex-end" : "flex-start", position: "relative" }}
                             >
                               <div style={{
@@ -2204,22 +2390,75 @@ export default function ChatClient() {
 
                     {/* Attachment Chips */}
                     <AnimatePresence>
-                      {activeSession.documents && activeSession.documents.length > 0 && (
                         <motion.div 
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: 10 }}
-                          style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}
+                          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, padding: "8px 0" }}
                         >
-                          {activeSession.documents.map(doc => (
-                            <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 10, background: isDark ? "rgba(96,165,250,0.1)" : "rgba(37,99,235,0.05)", border: `1px solid ${isDark ? "rgba(96,165,250,0.2)" : "rgba(37,99,235,0.1)"}`, fontSize: 11, color: ui.accent, fontWeight: 600 }}>
-                              <Paperclip size={12} />
-                              <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc.name}</span>
-                              <button onClick={() => handleDeleteDocument(doc.id)} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", marginLeft: 2, padding: 0 }}>×</button>
-                            </div>
-                          ))}
+                          {activeSession.documents.map(doc => {
+                            const isImage = ["png", "jpg", "jpeg", "bmp", "gif", "webp", "image"].includes(doc.type);
+                            return (
+                              <div key={doc.id} style={{ 
+                                position: "relative",
+                                display: "flex", 
+                                alignItems: "center", 
+                                gap: 6, 
+                                padding: isImage ? "4px" : "4px 10px", 
+                                borderRadius: 12, 
+                                background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", 
+                                border: `1px solid ${ui.panelBorder}`,
+                                fontSize: 11, 
+                                color: ui.text,
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
+                              }}>
+                                {isImage ? (
+                                  <div 
+                                    onClick={() => setLightboxImage({ 
+                                      url: doc.content?.startsWith("data:") ? doc.content : `data:image/${doc.type === 'jpg' ? 'jpeg' : (doc.type || 'png')};base64,${doc.content}`,
+                                      name: doc.name 
+                                    })}
+                                    style={{ width: 44, height: 44, borderRadius: 8, overflow: "hidden", border: `1px solid ${ui.panelBorder}`, cursor: "pointer", transition: "transform 0.2s" }}
+                                    onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+                                    onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+                                  >
+                                    <img 
+                                      src={doc.content?.startsWith("data:") ? doc.content : `data:image/${doc.type === 'jpg' ? 'jpeg' : (doc.type || 'png')};base64,${doc.content}`} 
+                                      alt={doc.name} 
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                                    />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <Paperclip size={12} style={{ color: ui.accent }} />
+                                    <span style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }}>{doc.name}</span>
+                                  </>
+                                )}
+                                <button 
+                                  onClick={() => handleDeleteDocument(doc.id)} 
+                                  style={{ 
+                                    position: "absolute", 
+                                    top: -6, 
+                                    right: -6, 
+                                    width: 18, 
+                                    height: 18, 
+                                    borderRadius: "50%", 
+                                    background: "#ef4444", 
+                                    color: "#fff", 
+                                    border: "none", 
+                                    fontSize: 10, 
+                                    fontWeight: 900, 
+                                    cursor: "pointer", 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    justifyContent: "center",
+                                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                                  }}
+                                >×</button>
+                              </div>
+                            );
+                          })}
                         </motion.div>
-                      )}
                     </AnimatePresence>
 
                     <div style={{ position: "relative", display: "flex", gap: 10, alignItems: "flex-end" }}>
@@ -2236,7 +2475,7 @@ export default function ChatClient() {
                           <textarea 
                             ref={textareaRef}
                             value={input} 
-                            onChange={e => setInput(e.target.value)} 
+                            onChange={e => setInput(e.target.value)} onPaste={handlePaste} 
                             onKeyDown={e => { 
                               if (e.key === "Enter") {
                                 if (e.shiftKey) return; // Allow newline
@@ -2394,7 +2633,7 @@ export default function ChatClient() {
 
       {/* Persistence and Inputs */}
       <input ref={fileInputRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }} />
-      <input ref={docInputRef} type="file" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleDocumentUpload(f); }} />
+      <input ref={docInputRef} type="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg,.bmp,.gif,.webp" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleDocumentUpload(f); }} />
 
       {/* Modern Toast Notifications */}
       <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", flexDirection: "column-reverse", gap: 8, zIndex: 9999 }}>
@@ -2430,6 +2669,96 @@ export default function ChatClient() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* --- LIGHTBOX (Day 21) --- */}
+      <AnimatePresence>
+        {lightboxImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setLightboxImage(null)}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: "rgba(0,0,0,0.92)",
+              backdropFilter: "blur(12px)",
+              zIndex: 1000,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 40,
+              cursor: "zoom-out"
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: "relative",
+                maxWidth: "100%",
+                maxHeight: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 20,
+                cursor: "default"
+              }}
+            >
+              <img 
+                src={lightboxImage.url} 
+                alt={lightboxImage.name}
+                style={{
+                  maxWidth: "90vw",
+                  maxHeight: "80vh",
+                  borderRadius: 16,
+                  boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+                  border: "1px solid rgba(255,255,255,0.1)"
+                }}
+              />
+              
+              <div style={{ display: "flex", gap: 12, alignItems: "center", background: "rgba(255,255,255,0.1)", padding: "12px 24px", borderRadius: 100, border: "1px solid rgba(255,255,255,0.1)", backdropFilter: "blur(10px)" }}>
+                <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{lightboxImage.name}</span>
+                <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.2)" }} />
+                <a 
+                  href={lightboxImage.url} 
+                  download={lightboxImage.name}
+                  onClick={e => e.stopPropagation()}
+                  style={{ color: ui.accent, fontSize: 12, fontWeight: 800, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  Download Image
+                </a>
+                <button 
+                  onClick={() => setLightboxImage(null)}
+                  style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 800, paddingLeft: 8 }}
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <style jsx global>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-12px); }
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </main>
   );
 }

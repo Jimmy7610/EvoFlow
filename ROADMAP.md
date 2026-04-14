@@ -44,11 +44,18 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 - [x] **Welcome Onboarding**: Added an interactive empty state with actionable example prompts.
 - [x] **System Hardening**: Fixed latent TypeScript build errors and ensured stable production compilation.
 
+### Phase 7: Hybrid Intelligence & Transparency (The "Enterprise" Era)
+- [x] **Hybrid Cloud-Local Routing**: Integrated OpenAI/Anthropic support alongside local Ollama instances.
+- [x] **Secure API Key Management**: Built-in settings panel with masked key storage in the database.
+- [x] **Advanced Context Steering 🎯**: Surgically guide the RAG engine with focus/exclusion rules.
+- [x] **Interactive Reasoning Visualization**: Click-to-expand details for every AI thought step.
+- [x] **Unified Data Architecture**: Centralized database infrastructure for maximum cross-process reliability.
+
 ---
 
 ## 🏗 In Progress
+- [ ] **Dynamic Theming v2**: Real-time theme editing and "Frosted Glass" (glassmorphism) depth variants.
 - [ ] **Accessibility Audit**: Ensuring high-contrast ratios in Dark Mode for better readability.
-- [ ] **Multi-Step Visualization Improvement**: Enhancing the UI for tracking complex agent reasoning paths.
 
 
 ---
@@ -62,13 +69,12 @@ This document tracks the evolution of EvoFlow, our managed operations dashboard 
 
 ### 🛠 Features & UX
 - **Image Generation Preview**: Visual feedback area for integrated image generation tasks.
-- **Advanced Context Steering**: User-defined focus areas for the RAG engine (e.g., "prioritize code blocks").
 - **Voice-to-Execution**: Direct voice command integration for hands-free local LLM operations.
+- **Auto-Summarization**: Automatic sidebar cleanup by periodically summarizing old chat titles.
 
 ### ⚙️ Infrastructure
-- **Custom Model Pointers**: Ability to point to remote Ollama/OpenAI instances per session.
 - **Multi-Node Workers**: Support for distributing LLM tasks across multiple background machines.
-- **API Key Management**: Secure local storage for external API keys (OpenAI, Anthropic) as fallbacks.
+- **Docker Orchestration**: Provide a complete containerized setup for zero-config deployment.
 
 ---
 

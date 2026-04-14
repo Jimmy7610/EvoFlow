@@ -116,33 +116,84 @@ async function processRunV4(run: any) {
   });
   const memorySummary = buildMemorySummary(relevantMemory);
 
-  // 2. Cloud Routing Check
+  // 2. Fetch Session Documents (for Vision)
+  let images: string[] = [];
+  if (run.sessionId) {
+    const docs = await prisma.chatDocument.findMany({
+      where: { 
+        sessionId: run.sessionId,
+        type: { in: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'image'] }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1
+    });
+
+    if (docs.length > 0) {
+      const lastImg = docs[0];
+      console.log(`[executor] Vision Triggered! Processing most recent image: ${lastImg.name}`);
+      
+      const rawBase64 = lastImg.content && lastImg.content.includes(';base64,') 
+        ? lastImg.content.split(';base64,')[1] 
+        : (lastImg.content || '');
+        
+      if (rawBase64) {
+        images = [rawBase64];
+        console.log(`[executor] Cleaned base64 length: ${rawBase64.length}`);
+      }
+    }
+  }
+
+  // 3. Image Generation Detection
+  const isImageGen = message.toLowerCase().includes('generate an image') || 
+                     message.toLowerCase().includes('rita en bild') || 
+                     message.toLowerCase().includes('create an image');
+
+  // 4. Cloud Routing Check
   const cloudConfig = await getCloudConfig();
   const isOpenAI = targetModel.startsWith('gpt-');
   
   let finalOutput = '';
   let node = isOpenAI ? 'cloud-agent' : 'local-agent';
 
-  if (isOpenAI && cloudConfig?.openai) {
+  if (isImageGen && cloudConfig?.openai) {
+    console.log(`[executor] Triggering Image Generation: ${message}`);
+    node = 'image-generator';
+    try {
+      const { generateImage } = await import('./lib/imageGen');
+      const imageUrl = await generateImage(message, cloudConfig.openai);
+      finalOutput = `🎨 **Generated Image:**\n\n![Generated Image](${imageUrl})\n\nPrompt used: *${message}*`;
+    } catch (err) {
+      finalOutput = `❌ Failed to generate image: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  } else if (isOpenAI && cloudConfig?.openai) {
     console.log(`[executor] Routing to OpenAI: ${targetModel}`);
     const llm = new ChatOpenAI({
       openAIApiKey: cloudConfig.openai,
       modelName: targetModel,
       temperature: 0.7
     });
-    const prompt = normalized.systemPrompt 
-      ? `${normalized.systemPrompt}\n\nUser: ${message}`
-      : message;
     
-    const response = await llm.invoke(prompt);
+    // Convert to messages array for vision if needed
+    let content: any = message;
+    if (images.length > 0) {
+      content = [
+        { type: 'text', text: message },
+        ...images.map(img => ({
+          type: 'image_url',
+          image_url: { url: `data:image/png;base64,${img}` }
+        }))
+      ];
+    }
+
+    const response = await llm.invoke(content);
     finalOutput = response.content as string;
   } else {
     // Local / Ollama routing
     if (mode === 'direct') {
-      finalOutput = await generateDirectReply({ message, memorySummary });
+      finalOutput = await generateDirectReply({ message, memorySummary }, images);
       node = 'direct-agent';
     } else {
-      finalOutput = await generateMultiStepReply({ message, memorySummary, input: normalized });
+      finalOutput = await generateMultiStepReply({ message, memorySummary, input: normalized }, images);
       node = 'planner-agent';
     }
   }
