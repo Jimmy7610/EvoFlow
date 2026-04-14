@@ -4,7 +4,11 @@ EvoFlow is a state-of-the-art, hybrid local-cloud intelligence platform designed
 
 ![EvoFlow V6 Banner](https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=1200)
 
-## 💎 Premium Intelligence Features
+### 💎 Universal Premium UI (v21.5)
+- **Shared Theme Engine**: Centralized design tokens (Midnight, Obsidian, Emerald) ensuring absolute visual parity across the platform.
+- **Glassmorphic Navigation**: A unified, high-depth header shared by Dash, Chat, Workflows, and Dev routes.
+- **Global Theme Persistence**: Automatic `localStorage` synchronization for a seamless experience across all sessions.
+- **Micro-Animations**: Framer Motion powered transitions for a tactile, responsive feel.
 
 ### 👁️ Vision Intelligence Core (Llava Augmented)
 - **Deep Scan Protocol**: Multi-layered image analysis covering Environment, Figures, Textures, Lighting, and Technical elements.
@@ -18,7 +22,7 @@ EvoFlow is a state-of-the-art, hybrid local-cloud intelligence platform designed
 - **Reasoning Stepper**: Visualized multi-step planning (Planner -> Research -> Synthesis), allowing you to peek into the AI's internal process.
 
 ### ⚡ Technical Stack
-- **Frontend**: Next.js 14, Framer Motion (Premium Animations), Glassmorphism UI.
+- **Frontend**: Next.js 14, Framer Motion (Premium Animations), Shared Theme Library (`lib/themes.ts`).
 - **Backend (API)**: Node.js/Express with Postgres/Prisma persistence.
 - **Engine**: Local Ollama (optimized for 8192 token prediction and 16k context windows).
 

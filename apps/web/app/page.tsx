@@ -1,8 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Layers, FileText, Swords, ArrowRight, Zap, Terminal, Brain, Globe } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { THEMES, ThemeName } from '../lib/themes';
+import { PremiumHeader } from '../components/PremiumHeader';
+import { usePathname } from 'next/navigation';
 
 const FEATURES = [
   {
@@ -56,75 +60,43 @@ const item = {
 };
 
 export default function HomePage() {
+  const [activeThemeName, setActiveThemeName] = useState<ThemeName>("midnight");
+  const [isClient, setIsClient] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    setIsClient(true);
+    const saved = localStorage.getItem("evoflow_theme") as ThemeName;
+    if (saved && THEMES[saved]) setActiveThemeName(saved);
+  }, []);
+
+  const handleThemeChange = (name: ThemeName) => {
+    setActiveThemeName(name);
+    localStorage.setItem("evoflow_theme", name);
+  };
+
+  const ui = THEMES[activeThemeName] || THEMES.midnight;
+  const isDark = ui.isDark;
+
+  if (!isClient) return <div style={{ background: "#020617", minHeight: "100vh" }} />;
+
   return (
     <div style={{
       minHeight: "100vh",
-      background: "radial-gradient(ellipse at 20% 0%, rgba(59, 130, 246, 0.12) 0%, transparent 50%), radial-gradient(ellipse at 80% 100%, rgba(139, 92, 246, 0.08) 0%, transparent 50%), #020617",
-      color: "#f8fafc",
+      background: ui.pageBg,
+      color: ui.text,
       overflow: "auto",
+      transition: "background 0.4s ease, color 0.4s ease"
     }}>
-      {/* Nav */}
-      <motion.nav
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        style={{
-          padding: "20px 40px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          maxWidth: 1200,
-          margin: "0 auto",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 900,
-            fontSize: 16,
-            color: "#fff",
-            boxShadow: "0 4px 14px rgba(59, 130, 246, 0.3)",
-          }}>E</div>
-          <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em" }}>EvoFlow</span>
-          <span style={{
-            fontSize: 9,
-            fontWeight: 700,
-            padding: "2px 8px",
-            borderRadius: 6,
-            background: "rgba(59, 130, 246, 0.15)",
-            color: "#60a5fa",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}>AI Ops</span>
-        </div>
-        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
-          <Link href="/chat" style={{ fontSize: 14, fontWeight: 600, color: "#94a3b8", transition: "color 0.2s" }}>Chat</Link>
-          <Link href="/workflows" style={{ fontSize: 14, fontWeight: 600, color: "#94a3b8", transition: "color 0.2s" }}>Workflows</Link>
-          <Link href="/dev" style={{ fontSize: 14, fontWeight: 600, color: "#475569", transition: "color 0.2s" }}>Dev</Link>
-          <Link
-            href="/chat"
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              padding: "8px 20px",
-              borderRadius: 10,
-              background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-              color: "#fff",
-              border: "none",
-              boxShadow: "0 4px 14px rgba(59, 130, 246, 0.3)",
-              transition: "all 0.2s",
-            }}
-          >
-            Open Chat →
-          </Link>
-        </div>
-      </motion.nav>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "10px 20px" }}>
+        <PremiumHeader 
+          activeThemeName={activeThemeName}
+          onThemeChange={handleThemeChange}
+          ui={ui}
+          isDark={isDark}
+          activePath={pathname}
+        />
+      </div>
 
       {/* Hero */}
       <motion.section
@@ -214,7 +186,7 @@ export default function HomePage() {
           style={{
             fontSize: 18,
             lineHeight: 1.7,
-            color: "#94a3b8",
+            color: ui.muted,
             maxWidth: 600,
             margin: "0 auto 40px",
           }}
@@ -237,12 +209,12 @@ export default function HomePage() {
               gap: 8,
               padding: "14px 32px",
               borderRadius: 14,
-              background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+              background: ui.accent,
               color: "#fff",
               fontWeight: 700,
               fontSize: 16,
               border: "none",
-              boxShadow: "0 8px 32px rgba(59, 130, 246, 0.35), inset 0 1px 0 rgba(255,255,255,0.1)",
+              boxShadow: `0 8px 32px ${ui.accent}55, inset 0 1px 0 rgba(255,255,255,0.1)`,
               transition: "all 0.3s",
               textDecoration: "none",
             }}
@@ -258,13 +230,14 @@ export default function HomePage() {
               gap: 8,
               padding: "14px 32px",
               borderRadius: 14,
-              background: "rgba(255, 255, 255, 0.04)",
-              color: "#e2e8f0",
+              background: ui.controlBg,
+              color: ui.text,
               fontWeight: 600,
               fontSize: 16,
-              border: "1px solid rgba(255, 255, 255, 0.08)",
+              border: `1px solid ${ui.panelBorder}`,
               transition: "all 0.3s",
               textDecoration: "none",
+              backdropFilter: ui.glassBlur,
             }}
           >
             View Workflows
@@ -292,9 +265,9 @@ export default function HomePage() {
             gap: 8,
             fontSize: 13,
             fontWeight: 600,
-            color: "#64748b",
+            color: ui.muted,
           }}>
-            <span style={{ color: "#475569" }}>{cap.icon}</span>
+            <span style={{ color: ui.accent }}>{cap.icon}</span>
             {cap.label}
           </div>
         ))}
@@ -322,21 +295,23 @@ export default function HomePage() {
             style={{
               padding: 28,
               borderRadius: 20,
-              background: "rgba(255, 255, 255, 0.02)",
-              border: "1px solid rgba(255, 255, 255, 0.06)",
-              backdropFilter: "blur(12px)",
+              background: ui.panelBg,
+              border: `1px solid ${ui.panelBorder}`,
+              backdropFilter: ui.glassBlur,
               cursor: "default",
-              transition: "border-color 0.3s, box-shadow 0.3s",
+              transition: "all 0.3s",
               position: "relative",
               overflow: "hidden",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+              e.currentTarget.style.borderColor = ui.accent;
               e.currentTarget.style.boxShadow = `0 20px 60px ${feature.glow}`;
+              e.currentTarget.style.transform = "translateY(-6px)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.06)";
+              e.currentTarget.style.borderColor = ui.panelBorder;
               e.currentTarget.style.boxShadow = "none";
+              e.currentTarget.style.transform = "translateY(0)";
             }}
           >
             {/* Background glow */}
@@ -377,7 +352,7 @@ export default function HomePage() {
             <p style={{
               fontSize: 14,
               lineHeight: 1.6,
-              color: "#94a3b8",
+              color: ui.muted,
               margin: 0,
             }}>
               {feature.description}
@@ -394,11 +369,11 @@ export default function HomePage() {
       }}>
         <div style={{
           fontSize: 12,
-          color: "#475569",
+          color: ui.subtle,
           fontWeight: 600,
           letterSpacing: "0.02em",
         }}>
-          Powered by <span style={{ color: "#64748b" }}>Ollama</span> · <span style={{ color: "#64748b" }}>Next.js</span> · <span style={{ color: "#64748b" }}>Prisma</span> · <span style={{ color: "#64748b" }}>Express</span>
+          Powered by <span style={{ color: ui.muted }}>Ollama</span> · <span style={{ color: ui.muted }}>Next.js</span> · <span style={{ color: ui.muted }}>Prisma</span> · <span style={{ color: ui.muted }}>Express</span>
         </div>
         <div style={{
           fontSize: 11,

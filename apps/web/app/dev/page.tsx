@@ -1,9 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import Link from 'next/link';
+import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Terminal, Send, Play, Database, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { THEMES, ThemeName } from '../../lib/themes';
+import { PremiumHeader } from '../../components/PremiumHeader';
+import { usePathname } from 'next/navigation';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, "");
 const DEMO_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || '';
 
 const DEFAULT_RAW_JSON = `{
@@ -11,27 +15,28 @@ const DEFAULT_RAW_JSON = `{
   "mode": "direct"
 }`;
 
-const MEMORY_TEST_1 = `{
-  "message": "Write a simple TypeScript function that validates email addresses.",
-  "mode": "multi-step"
-}`;
-
-const MEMORY_TEST_2 = `{
-  "message": "Improve the previous email validator and make it more robust.",
-  "mode": "multi-step"
-}`;
-
-const MEMORY_TEST_3 = `{
-  "message": "Explain the improvements you made to the previous validator in simple terms.",
-  "mode": "multi-step"
-}`;
-
-export default function Page() {
+export default function DevPage() {
+  const [activeThemeName, setActiveThemeName] = useState<ThemeName>("midnight");
   const [rawJson, setRawJson] = useState(DEFAULT_RAW_JSON);
   const [responseText, setResponseText] = useState('No response yet');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [lastUrl, setLastUrl] = useState('');
+  const [isClient, setIsClient] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    setIsClient(true);
+    const saved = localStorage.getItem("evoflow_theme") as ThemeName;
+    if (saved && THEMES[saved]) setActiveThemeName(saved);
+  }, []);
+
+  const handleThemeChange = (name: ThemeName) => {
+    setActiveThemeName(name);
+    localStorage.setItem("evoflow_theme", name);
+  };
+
+  const ui = THEMES[activeThemeName] || THEMES.midnight;
+  const isDark = ui.isDark;
 
   const parsedPayload = useMemo(() => {
     try {
@@ -41,185 +46,183 @@ export default function Page() {
     }
   }, [rawJson]);
 
-  async function tryEndpoints(payload: unknown) {
-    const endpoints = [`${API_BASE_URL}/runs`, `${API_BASE_URL}/api/runs`];
-    const attempts: unknown[] = [];
-
-    for (const endpoint of endpoints) {
-      setLastUrl(endpoint);
-
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(DEMO_TOKEN ? { Authorization: `Bearer ${DEMO_TOKEN}` } : {}),
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const text = await res.text();
-        let json: unknown = null;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          json = null;
-        }
-
-        attempts.push({
-          endpoint,
-          ok: res.ok,
-          status: res.status,
-          statusText: res.statusText,
-          body: json ?? text,
-        });
-
-        if (res.ok && json) {
-          return {
-            success: true,
-            endpoint,
-            data: json,
-            attempts,
-          };
-        }
-      } catch (error) {
-        attempts.push({
-          endpoint,
-          ok: false,
-          status: 'FETCH_ERROR',
-          statusText: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return {
-      success: false,
-      attempts,
-    };
-  }
-
   async function createRun() {
     setError('');
     setSubmitting(true);
     setResponseText('Waiting for API response...');
 
     if (!parsedPayload) {
-      setError('JSON is invalid. Fix the textarea content first.');
+      setError('JSON is invalid. Please fix the syntax.');
       setSubmitting(false);
       return;
     }
 
-    const result = await tryEndpoints(parsedPayload);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/runs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(DEMO_TOKEN ? { Authorization: `Bearer ${DEMO_TOKEN}` } : {}),
+        },
+        body: JSON.stringify(parsedPayload),
+      });
 
-    if (result.success) {
-      setResponseText(JSON.stringify(result, null, 2));
-    } else {
-      setError('Ingen fungerande create-run endpoint svarade med giltig JSON. Kolla API response för detaljer.');
-      setResponseText(JSON.stringify({ postedPayload: parsedPayload, ...result }, null, 2));
+      const data = await res.json();
+      setResponseText(JSON.stringify(data, null, 2));
+    } catch (err) {
+      setError('API request failed. Ensure the server is running.');
+      setResponseText(String(err));
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   }
 
+  if (!isClient) return <div style={{ background: "#020617", minHeight: "100vh" }} />;
+
   return (
-    <main style={{ padding: 24, fontFamily: 'Arial, sans-serif' }}>
-      <nav style={{ display: 'flex', gap: 20, marginBottom: 32, fontSize: 14 }}>
-        <Link href="/" style={{ fontWeight: 'bold' }}>Dashboard</Link>
-        <Link href="/workflows">Workflows</Link>
-        <Link href="/chat">Chat</Link>
-      </nav>
+    <div style={{
+      minHeight: "100vh",
+      background: ui.pageBg,
+      color: ui.text,
+      transition: "background 0.4s ease, color 0.4s ease"
+    }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "10px 20px" }}>
+        <PremiumHeader 
+          activeThemeName={activeThemeName}
+          onThemeChange={handleThemeChange}
+          ui={ui}
+          isDark={isDark}
+          activePath={pathname}
+        />
 
-      <h1 style={{ marginBottom: 8 }}>EvoFlow Testpanel V4</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Textarea JSON is the source of truth. What you see here is exactly what gets posted.
-      </p>
-
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr' }}>
-        <section>
-          <h2>Textarea JSON</h2>
-          <textarea
-            value={rawJson}
-            onChange={(e) => setRawJson(e.target.value)}
-            spellCheck={false}
-            style={{
-              width: '100%',
-              minHeight: 320,
-              padding: 12,
-              fontFamily: 'monospace',
-              fontSize: 14,
-              borderRadius: 8,
-              border: '1px solid #ccc',
-            }}
-          />
-          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              onClick={createRun}
-              disabled={submitting}
-              style={{
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid #111',
-                background: '#111',
-                color: '#fff',
-                cursor: submitting ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {submitting ? 'Sending...' : 'Create run'}
-            </button>
-            <button onClick={() => setRawJson(DEFAULT_RAW_JSON)} style={secondaryButtonStyle}>Load BANAN test</button>
-            <button onClick={() => setRawJson(MEMORY_TEST_1)} style={secondaryButtonStyle}>Memory test 1</button>
-            <button onClick={() => setRawJson(MEMORY_TEST_2)} style={secondaryButtonStyle}>Memory test 2</button>
-            <button onClick={() => setRawJson(MEMORY_TEST_3)} style={secondaryButtonStyle}>Memory test 3</button>
+        <motion.div
+           initial={{ opacity: 0, y: 20 }}
+           animate={{ opacity: 1, y: 0 }}
+           style={{ padding: "40px 0" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <Terminal size={32} style={{ color: ui.accent }} />
+            <h1 style={{ fontSize: 32, fontWeight: 900, margin: 0 }}>Dev Controls</h1>
           </div>
-        </section>
+          <p style={{ color: ui.muted, fontSize: 16, maxWidth: 600, marginBottom: 32 }}>
+            Low-level API interaction and debugging panel. Send raw payloads directly to the intelligence engine.
+          </p>
 
-        <section>
-          <h2>Payload preview</h2>
-          <pre style={preStyle}>{parsedPayload ? JSON.stringify(parsedPayload, null, 2) : 'Invalid JSON'}</pre>
-        </section>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+            {/* Editor */}
+            <section style={{ 
+              padding: 24, 
+              borderRadius: 20, 
+              background: ui.panelBg, 
+              border: `1px solid ${ui.panelBorder}`,
+              backdropFilter: ui.glassBlur
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                 <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>Request Payload</h2>
+                 <div style={{ fontSize: 10, fontWeight: 900, color: ui.accent, background: ui.actionBg, padding: "4px 8px", borderRadius: 6 }}>JSON RAW</div>
+              </div>
+              <textarea
+                value={rawJson}
+                onChange={(e) => setRawJson(e.target.value)}
+                spellCheck={false}
+                style={{
+                  width: '100%',
+                  minHeight: 380,
+                  padding: 16,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  borderRadius: 12,
+                  border: `1px solid ${ui.panelBorder}`,
+                  background: "rgba(0,0,0,0.2)",
+                  color: ui.text,
+                  outline: "none",
+                  resize: "vertical"
+                }}
+              />
+              <div style={{ marginTop: 20 }}>
+                <button
+                  onClick={createRun}
+                  disabled={submitting}
+                  style={{
+                    width: "100%",
+                    padding: '14px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: ui.accent,
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: submitting ? 'wait' : 'pointer',
+                    boxShadow: `0 8px 24px ${ui.accent}44`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    transition: "all 0.2s"
+                  }}
+                >
+                  {submitting ? 'Executing...' : 'Dispatch Payload'}
+                  <Play size={16} fill="currentColor" />
+                </button>
+              </div>
+              
+              {error && (
+                <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#ef4444", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <ShieldAlert size={14} />
+                  {error}
+                </div>
+              )}
+            </section>
+
+            {/* Preview & Response */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+               <section style={{ 
+                flex: 1,
+                padding: 24, 
+                borderRadius: 20, 
+                background: ui.panelBg, 
+                border: `1px solid ${ui.panelBorder}`,
+                backdropFilter: ui.glassBlur
+              }}>
+                <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 16px 0" }}>Engine Response</h2>
+                <pre style={{
+                  margin: 0,
+                  padding: 16,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  borderRadius: 12,
+                  background: "rgba(0,0,0,0.3)",
+                  color: ui.muted,
+                  minHeight: 300,
+                  maxHeight: 500,
+                  overflowY: "auto",
+                  border: `1px solid ${ui.panelBorder}`
+                }}>
+                  {responseText}
+                </pre>
+              </section>
+
+              <section style={{ 
+                padding: 20, 
+                borderRadius: 20, 
+                background: ui.actionBg, 
+                border: `1px solid ${ui.panelBorder}`,
+                fontSize: 12,
+                color: ui.subtle,
+                lineHeight: 1.6
+              }}>
+                <div style={{ fontWeight: 800, color: ui.text, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                   <CheckCircle2 size={14} style={{ color: ui.accent }} />
+                   API Connectivity
+                </div>
+                <div><strong>Base URL:</strong> {API_BASE_URL}</div>
+                <div><strong>Endpoint:</strong> /api/runs</div>
+                <div><strong>Auth:</strong> {DEMO_TOKEN ? 'Bearer present' : 'Public'}</div>
+              </section>
+            </div>
+          </div>
+        </motion.div>
       </div>
-
-      <div style={{ marginTop: 16, lineHeight: 1.7 }}>
-        <div><strong>API base URL:</strong> {API_BASE_URL}</div>
-        <div><strong>Endpoint candidates:</strong> {API_BASE_URL}/runs | {API_BASE_URL}/api/runs</div>
-        <div><strong>Last endpoint tried:</strong> {lastUrl || '(none yet)'}</div>
-        <div><strong>Auth header:</strong> {DEMO_TOKEN ? 'Bearer token will be sent' : 'No token configured'}</div>
-      </div>
-
-      {error ? <div style={errorStyle}>{error}</div> : null}
-
-      <section style={{ marginTop: 24 }}>
-        <h2>API response</h2>
-        <pre style={preStyle}>{responseText}</pre>
-      </section>
-    </main>
+    </div>
   );
 }
-
-const secondaryButtonStyle = {
-  padding: '10px 14px',
-  borderRadius: 8,
-  border: '1px solid #ccc',
-  background: '#fff',
-  cursor: 'pointer',
-} as const;
-
-const preStyle = {
-  minHeight: 320,
-  margin: 0,
-  padding: 12,
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-  border: '1px solid #ccc',
-  borderRadius: 8,
-  background: '#fafafa',
-} as const;
-
-const errorStyle = {
-  marginTop: 16,
-  padding: 12,
-  borderRadius: 8,
-  background: '#ffe6e6',
-  border: '1px solid #ffb3b3',
-  color: '#8a1f1f',
-} as const;
