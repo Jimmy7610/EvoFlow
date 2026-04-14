@@ -10,11 +10,14 @@ The purpose of EvoFlow is to bridge the gap between simple LLM chats and profess
 
 ![EvoFlow V6 Banner](https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?auto=format&fit=crop&q=80&w=1200)
 
-### 💎 Universal Premium UI (v21.5)
+### 💎 Universal Premium UI (v21.11)
 - **Shared Theme Engine**: Centralized design tokens (Midnight, Obsidian, Emerald) ensuring absolute visual parity across the platform.
 - **Glassmorphic Navigation**: A unified, high-depth header shared by Dash, Chat, Workflows, and Dev routes.
-- **Global Theme Persistence**: Automatic `localStorage` synchronization for a seamless experience across all sessions.
-- **Micro-Animations**: Framer Motion powered transitions for a tactile, responsive feel.
+- **Active Response UX**: 
+    - **Thinking Skeletons**: Pulsing loaders for initial TTFB states.
+    - **Real-time Status**: "EvoFlow is thinking..." indicator with animated bouncing dots.
+    - **Abort Support**: Instant "Stop Generation" button to cancel active AI responses.
+- **Message Timestamps**: Accurate date/time tracking for every message in localized Swedish format (`sv-SE`).
 
 ### 👁️ Vision Intelligence Core (Llava Augmented)
 - **Deep Scan Protocol**: Multi-layered image analysis covering Environment, Figures, Textures, Lighting, and Technical elements.

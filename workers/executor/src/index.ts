@@ -227,6 +227,17 @@ async function processRunV4(run: any) {
 }
 
 async function loop() {
+  console.log('[executor] Pro Worker v2.0 - Stabilizing boot...');
+  
+  // Day 21: Verify DB Connection before loop
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    console.log('[executor] Database connection verified.');
+  } catch (err) {
+    console.error('[executor] Failed to connect to database on startup:', err);
+    throw err; // Allow fatal catch to handle restart via API
+  }
+
   console.log('[executor] Pro Worker started (Prisma Polling Active)');
 
   while (true) {
@@ -240,19 +251,21 @@ async function loop() {
           await markRunCompleted(run.id, result);
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
+          console.error(`[executor] Error processing run ${run.id}:`, errMsg);
           await markRunFailed(run.id, errMsg);
         }
       } else {
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       }
     } catch (error) {
-      console.error('[executor] loop error', error);
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      console.error('[executor] Loop iteration error:', error);
+      // Wait a bit longer on loop errors (e.g. DB down) to avoid spamming
+      await new Promise((resolve) => setTimeout(resolve, Math.max(POLL_INTERVAL_MS, 5000)));
     }
   }
 }
 
 loop().catch((error) => {
-  console.error('[executor] fatal error', error);
+  console.error('[executor] FATAL ERROR - Engine Shutting Down:', error);
   process.exit(1);
 });

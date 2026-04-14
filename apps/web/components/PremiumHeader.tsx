@@ -29,7 +29,7 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div>
+        <div className="theme-transition">
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
@@ -38,9 +38,9 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontWeight: 900, color: "#fff", fontSize: 13
               }}>E</div>
-              <h1 style={{ fontSize: 18, fontWeight: 800, margin: 0, color: ui.text }}>EvoFlow</h1>
+              <h1 className="hide-mobile" style={{ fontSize: 18, fontWeight: 800, margin: 0, color: ui.text }}>EvoFlow</h1>
             </div>
-            <nav style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
+            <nav className="hide-mobile" style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 600 }}>
               <Link href="/" style={{ 
                 color: activePath === '/' ? ui.text : ui.muted, 
                 textDecoration: "none", 
@@ -73,7 +73,7 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
           <div style={{ 
             display: "flex", 
             background: isDark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.03)", 
-            padding: 4, 
+            padding: "4px 8px", 
             borderRadius: 12, 
             border: `1px solid ${ui.panelBorder}` 
           }}>
@@ -83,8 +83,8 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
                 onClick={() => onThemeChange(tName)}
                 title={THEMES[tName].name}
                 style={{
-                  width: 22,
-                  height: 22,
+                  width: 20,
+                  height: 20,
                   borderRadius: 7,
                   border: activeThemeName === tName ? `2px solid ${ui.accent}` : "none",
                   background: THEMES[tName].accent,
@@ -101,19 +101,19 @@ export function PremiumHeader({ activeThemeName, onThemeChange, ui, isDark, acti
           
           <Link
             href="/chat"
+            className="theme-transition"
             style={{
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 800,
-              padding: "6px 16px",
+              padding: "6px 14px",
               borderRadius: 10,
               background: ui.accent,
               color: "#fff",
               textDecoration: "none",
               boxShadow: `0 4px 12px ${ui.accent}33`,
-              transition: "all 0.2s",
             }}
           >
-            Launch Chat →
+            <span className="hide-mobile">Launch </span>Chat →
           </Link>
         </div>
       </div>

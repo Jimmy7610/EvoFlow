@@ -98,6 +98,9 @@ const EVOFLOW_EXECUTOR_COMMAND = process.env.EVOFLOW_EXECUTOR_COMMAND || "npm ru
 const managedServiceProcesses = new Map<ManagedServiceName, ChildProcess>();
 const managedServiceStartedAt = new Map<ManagedServiceName, string>();
 const managedServiceErrors = new Map<ManagedServiceName, string>();
+const managedServiceRestarts = new Map<ManagedServiceName, number>();
+const MAX_SERVICE_RESTARTS = 10;
+const RESTART_BACKOFF_MS = 5000;
 
 
 app.use(cors());
@@ -755,8 +758,28 @@ async function startManagedExecutorService() {
   managedServiceStartedAt.set("executor", new Date().toISOString());
   managedServiceErrors.delete("executor");
 
-  child.on("exit", () => {
-    managedServiceProcesses.delete("executor");
+  child.on("exit", (code) => {
+    const isRunning = managedServiceProcesses.get("executor") === child;
+    if (isRunning) {
+      managedServiceProcesses.delete("executor");
+    }
+
+    // Auto-Restart Logic
+    if (code !== 0 && code !== null) {
+      const restarts = managedServiceRestarts.get("executor") || 0;
+      if (restarts < MAX_SERVICE_RESTARTS) {
+        console.warn(`[apps/api] Executor exited with code ${code}. Restarting in ${RESTART_BACKOFF_MS}ms... (${restarts + 1}/${MAX_SERVICE_RESTARTS})`);
+        managedServiceRestarts.set("executor", restarts + 1);
+        setTimeout(() => startManagedExecutorService().catch(console.error), RESTART_BACKOFF_MS);
+      } else {
+        const errorMsg = `Executor failed after ${MAX_SERVICE_RESTARTS} attempts. Check logs in ${cwd}`;
+        console.error(`[apps/api] ${errorMsg}`);
+        managedServiceErrors.set("executor", errorMsg);
+      }
+    } else {
+      // Clean exit, reset restarts
+      managedServiceRestarts.set("executor", 0);
+    }
   });
 
   child.on("error", (error) => {
@@ -1549,4 +1572,10 @@ app.listen(PORT, () => {
   console.log(`[apps/api] Default Ollama model: ${DEFAULT_OLLAMA_MODEL}`);
   console.log("[apps/api] GET /workflows, GET /runs, GET /ollama/models and GET /dev/status are enabled");
   console.log("[apps/api] POST /dev/start, POST /dev/stop, POST /runs, POST /runs/stream and POST /api/runs/stream are enabled");
+
+  // Day 21: Auto-start critical background engine
+  console.log("[apps/api] Initializing Managed Services...");
+  startManagedExecutorService().catch(err => {
+    console.error("[apps/api] Failed to auto-start executor on boot:", err);
+  });
 });

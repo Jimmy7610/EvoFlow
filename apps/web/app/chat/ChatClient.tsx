@@ -361,6 +361,15 @@ function getAgentPresentation(role: string) {
   }
 }
 
+function SkeletonThinking({ ui }: { ui: any }) {
+  return (
+    <div className="pulse-thinking" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "4px 0" }}>
+      <div style={{ width: "60%", height: 12, borderRadius: 6, background: ui.panelBorder, opacity: 0.5 }} />
+      <div style={{ width: "40%", height: 12, borderRadius: 6, background: ui.panelBorder, opacity: 0.3 }} />
+    </div>
+  );
+}
+
 // --- SUB-COMPONENT: RICH MESSAGE CONTENT (DAY 4 UPGRADE) ---
 function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { content: string, isStreaming: boolean, isDark: boolean, ui: any, fontSize: number }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -370,6 +379,10 @@ function RichMessageContent({ content, isStreaming, isDark, ui, fontSize }: { co
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  if (!content && isStreaming) {
+    return <SkeletonThinking ui={ui} />;
+  }
 
   return (
     <div className="prose-container" style={{ fontSize: fontSize, lineHeight: 1.6, color: "inherit", overflowWrap: "break-word", wordBreak: "break-word" }}>
@@ -1692,10 +1705,10 @@ export default function ChatClient() {
 
       {devErrorText && <div style={{ marginBottom: 10, padding: 10, borderRadius: 12, background: isDark ? "rgba(127,29,29,0.2)" : "#fff1f2", color: "#ef4444", fontSize: 13 }}>{devErrorText}</div>}
 
-      {/* --- CONTENT AREA --- */}
-      <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 12, flex: 1, overflow: "hidden", paddingBottom: 10 }}>
+      {/* --- CONTENT AREA (Responsive Grid) --- */}
+      <div className="chat-layout-grid">
         {/* Sidebar */}
-        <aside style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, backdropFilter: ui.glassBlur, outline: isGlassmorphic ? `1px solid rgba(255,255,255,0.05)` : "none", transition: "all 0.3s", padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <aside className="chat-sidebar hide-scrollbar" style={{ border: `1px solid ${ui.panelBorder}`, borderRadius: 16, background: ui.panelBg, backdropFilter: ui.glassBlur, outline: isGlassmorphic ? `1px solid rgba(255,255,255,0.05)` : "none", transition: "all 0.3s", padding: 12, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: ui.subtle, textTransform: "uppercase" }}>Sessions</span>
             <div style={{ display: "flex", gap: 6 }}>
@@ -1977,7 +1990,10 @@ export default function ChatClient() {
                                 )}
 
                                 <RichMessageContent content={message.content} isStreaming={isStreaming} isDark={isDark} ui={ui} fontSize={fontSize} />
-                                <div style={{ fontSize: 9, opacity: 0.4, marginTop: 8, textAlign: "right" }}>{message.model || activeSession.model}</div>
+                                <div style={{ fontSize: 9, opacity: 0.4, marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                  <span>{new Date(message.createdAt).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' })} {new Date(message.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
+                                  {message.role === "assistant" && <span>{message.model || activeSession.model}</span>}
+                                </div>
                               </div>
                             </motion.div>
                           );
@@ -2053,6 +2069,9 @@ export default function ChatClient() {
                           )}
 
                           <RichMessageContent content={m.content} isStreaming={isComparisonSending && m.id === comparisonMessages[comparisonMessages.length-1].id} isDark={isDark} ui={ui} fontSize={fontSize - 1} />
+                          <div style={{ fontSize: 8, opacity: 0.4, marginTop: 6, textAlign: "right" }}>
+                            {new Date(m.createdAt).toLocaleDateString('sv-SE', { day: 'numeric', month: 'short' })} {new Date(m.createdAt).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -2181,119 +2200,142 @@ export default function ChatClient() {
                     </AnimatePresence>
 
                     <div style={{ position: "relative", display: "flex", gap: 10, alignItems: "flex-end" }}>
-                       <div style={{ 
-                         flex: 1, 
-                         borderRadius: 20, 
-                         border: `1px solid ${ui.controlBorder}`, 
-                         background: ui.controlBg, 
-                         overflow: "hidden", 
-                         boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
-                         transition: "box-shadow 0.2s, border-color 0.2s",
-                         ...(input.length > 0 ? { borderColor: ui.accent, boxShadow: `0 0 0 2px ${isDark ? "rgba(96,165,250,0.15)" : "rgba(37,99,235,0.1)"}` } : {})
-                       }}>
-                          <textarea 
-                            ref={textareaRef}
-                            value={input} 
-                            onChange={e => setInput(e.target.value)} onPaste={handlePaste} 
-                            onKeyDown={e => { 
-                              if (e.key === "Enter") {
-                                if (e.shiftKey) return; // Allow newline
-                                if (e.metaKey || e.ctrlKey || true) { // Standard Enter or Cmd+Enter
-                                  e.preventDefault(); 
-                                  handleSend(); 
-                                }
-                              }
-                              if (e.key === "Escape") {
-                                textareaRef.current?.blur();
-                              }
-                            }} 
-                            placeholder="Type your message..." 
-                            style={{ 
-                              width: "100%", 
-                              minHeight: 50, 
-                              maxHeight: 300, 
-                              padding: "14px 44px 14px 16px", 
-                              border: "none", 
-                              background: "none", 
-                              color: ui.text, 
-                              fontSize: 15, 
-                              lineHeight: 1.5,
-                              outline: "none", 
-                              resize: "none" 
-                            }} 
-                          />
-                           {/* Quick Prompts (Day 9) */}
-                           <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 4 }}>
-                             <button
-                               onClick={() => setShowTemplates(!showTemplates)}
-                               style={{
-                                 width: 32,
-                                 height: 32,
-                                 borderRadius: 8,
-                                 background: showTemplates ? ui.accent : "transparent",
-                                 color: showTemplates ? "#fff" : ui.subtle,
-                                 border: "none",
-                                 cursor: "pointer",
-                                 display: "flex",
-                                 alignItems: "center",
-                                 justifyContent: "center",
-                                 transition: "all 0.2s"
-                               }}
-                               title="Quick Prompts"
-                             >
-                               <span style={{ fontSize: 14 }}>⚡</span>
-                             </button>
-                             <AnimatePresence>
-                               {showTemplates && (
-                                 <motion.div
-                                   initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                                   exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                   style={{
-                                     position: "absolute",
-                                     bottom: 40,
-                                     right: 0,
-                                     width: 200,
-                                     background: ui.panelBg,
-                                     border: `1px solid ${ui.panelBorder}`,
-                                     borderRadius: 12,
-                                     boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-                                     padding: 6,
-                                     zIndex: 1000,
-                                     display: "grid",
-                                     gap: 2
-                                   }}
-                                 >
-                                   <div style={{ fontSize: 9, fontWeight: 900, color: ui.subtle, padding: "4px 8px", textTransform: "uppercase" }}>Templates</div>
-                                   {PROMPT_TEMPLATES.map((t, i) => (
-                                     <button
-                                       key={i}
-                                       onClick={() => {
-                                         setInput(prev => prev + (prev.endsWith(" ") || !prev ? "" : " ") + t.prompt);
-                                         setShowTemplates(false);
-                                         textareaRef.current?.focus();
-                                       }}
-                                       style={{
-                                         textAlign: "left",
-                                         padding: "8px 10px",
-                                         borderRadius: 8,
-                                         background: "transparent",
-                                         color: ui.text,
-                                         border: "none",
-                                         fontSize: 12,
-                                         cursor: "pointer",
-                                         transition: "background 0.2s"
-                                       }}
-                                       onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
-                                       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                                     >
-                                       {t.name}
-                                     </button>
-                                   ))}
-                                 </motion.div>
-                               )}
-                             </AnimatePresence>
-                           </div>
+                       {/* Input Column (Status + Textarea) */}
+                       <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+                          {/* Active Status Indicator (New v21.9) */}
+                          <AnimatePresence>
+                            {isSending && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 5 }}
+                                style={{ fontSize: 11, color: ui.accent, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}
+                              >
+                                <div style={{ display: "flex", gap: 2 }}>
+                                  <div className="thinking-dot" />
+                                  <div className="thinking-dot" />
+                                  <div className="thinking-dot" />
+                                </div>
+                                EvoFlow is thinking...
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          <div style={{ 
+                            width: "100%", 
+                            borderRadius: 20, 
+                            border: `1px solid ${ui.controlBorder}`, 
+                            background: ui.controlBg, 
+                            position: "relative",
+                            overflow: "hidden", 
+                            boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                            transition: "box-shadow 0.2s, border-color 0.2s",
+                            ...(input.length > 0 ? { borderColor: ui.accent, boxShadow: `0 0 0 2px ${isDark ? "rgba(96,165,250,0.15)" : "rgba(37,99,235,0.1)"}` } : {})
+                          }}>
+                             <textarea 
+                               ref={textareaRef}
+                               value={input} 
+                               onChange={e => setInput(e.target.value)} onPaste={handlePaste} 
+                               onKeyDown={e => { 
+                                 if (e.key === "Enter") {
+                                   if (e.shiftKey) return; // Allow newline
+                                   if (e.metaKey || e.ctrlKey || true) { // Standard Enter or Cmd+Enter
+                                     e.preventDefault(); 
+                                     handleSend(); 
+                                   }
+                                 }
+                                 if (e.key === "Escape") {
+                                   textareaRef.current?.blur();
+                                 }
+                               }} 
+                               placeholder="Type your message..." 
+                               style={{ 
+                                 width: "100%", 
+                                 minHeight: 50, 
+                                 maxHeight: 300, 
+                                 padding: "14px 44px 14px 16px", 
+                                 border: "none", 
+                                 background: "none", 
+                                 color: ui.text, 
+                                 fontSize: 15, 
+                                 lineHeight: 1.5,
+                                 outline: "none", 
+                                 resize: "none" 
+                               }} 
+                             />
+                              {/* Quick Prompts */}
+                              <div style={{ position: "absolute", right: 8, bottom: 8, display: "flex", gap: 4 }}>
+                                <button
+                                  onClick={() => setShowTemplates(!showTemplates)}
+                                  style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 8,
+                                    background: showTemplates ? ui.accent : "transparent",
+                                    color: showTemplates ? "#fff" : ui.subtle,
+                                    border: "none",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    transition: "all 0.2s"
+                                  }}
+                                  title="Quick Prompts"
+                                >
+                                  <span style={{ fontSize: 14 }}>⚡</span>
+                                </button>
+                                <AnimatePresence>
+                                  {showTemplates && (
+                                    <motion.div
+                                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                      style={{
+                                        position: "absolute",
+                                        bottom: 40,
+                                        right: 0,
+                                        width: 200,
+                                        background: ui.panelBg,
+                                        border: `1px solid ${ui.panelBorder}`,
+                                        borderRadius: 12,
+                                        boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+                                        padding: 6,
+                                        zIndex: 1000,
+                                        display: "grid",
+                                        gap: 2
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 9, fontWeight: 900, color: ui.subtle, padding: "4px 8px", textTransform: "uppercase" }}>Templates</div>
+                                      {PROMPT_TEMPLATES.map((t, i) => (
+                                        <button
+                                          key={i}
+                                          onClick={() => {
+                                            setInput(prev => prev + (prev.endsWith(" ") || !prev ? "" : " ") + t.prompt);
+                                            setShowTemplates(false);
+                                            textareaRef.current?.focus();
+                                          }}
+                                          style={{
+                                            textAlign: "left",
+                                            padding: "8px 10px",
+                                            borderRadius: 8,
+                                            background: "transparent",
+                                            color: ui.text,
+                                            border: "none",
+                                            fontSize: 12,
+                                            cursor: "pointer",
+                                            transition: "background 0.2s"
+                                          }}
+                                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                        >
+                                          {t.name}
+                                        </button>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                          </div>
                        </div>
                        
                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -2311,10 +2353,14 @@ export default function ChatClient() {
                                display: "flex", 
                                alignItems: "center", 
                                justifyContent: "center",
-                               boxShadow: "0 4px 12px rgba(239,68,68,0.25)"
+                               boxShadow: "0 4px 12px rgba(239,68,68,0.35)",
+                               transition: "all 0.2s"
                              }}
+                             title="Stop Generation"
+                             onMouseEnter={e => e.currentTarget.style.transform = "scale(1.05)"}
+                             onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
                            >
-                              <Square size={18} fill="currentColor" />
+                              <Square size={20} fill="currentColor" />
                            </button>
                          ) : (
                            <button 

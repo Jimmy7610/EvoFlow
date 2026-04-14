@@ -97,7 +97,7 @@ export default function WorkflowsPage() {
               {error}
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
+            <div className="responsive-grid">
               {workflows.map((workflow, i) => (
                 <motion.div
                   key={workflow.id}

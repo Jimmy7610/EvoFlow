@@ -108,7 +108,7 @@ export default function DevPage() {
             Low-level API interaction and debugging panel. Send raw payloads directly to the intelligence engine.
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div className="responsive-grid">
             {/* Editor */}
             <section style={{ 
               padding: 24, 
